@@ -94,12 +94,16 @@
         <Grid Grid.Row="5" Margin="0,0,0,14">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock Text="Preview" FontWeight="SemiBold" Margin="0,0,0,7"/>
-            <TextBox x:Name="PreviewText" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True"
-                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                     Padding="12" Background="White" BorderBrush="#E1E2DE"/>
+            <TextBlock Text="Preview" FontWeight="SemiBold" Margin="0,0,0,3"/>
+            <TextBlock Grid.Row="1" Text="Formatting preview is an approximation; the target app may paste it differently."
+                       Foreground="#666A63" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,7"/>
+            <FlowDocumentScrollViewer x:Name="PreviewViewer" Grid.Row="2"
+                                     VerticalScrollBarVisibility="Auto"
+                                     IsSelectionEnabled="True" Background="White"
+                                     BorderBrush="#E1E2DE" BorderThickness="1"/>
         </Grid>
 
         <Grid Grid.Row="6">

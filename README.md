@@ -32,7 +32,9 @@ The structure-aware mode can choose headings, bullets, numbered lists, quotes, c
 - **Proofread only** and **Improve structure when useful** modes.
 - Local Ollama chat requests using `qwen2.5:7b` by default; the local model name is configurable.
 - Local settings for the model and `Ctrl+Shift+Space`, `Ctrl+Alt+Space`, or `Ctrl+Shift+N` shortcut presets.
-- A JSON response contract, validation of supported blocks/colors and table dimensions, and an editable review preview.
+- A JSON response contract, validation of supported blocks/colors and table dimensions, and a semantic rich-format preview that approximates headings, lists, quotes, code, colors, and tables without interpreting model output as markup.
+- Checks that the captured window still belongs to the same process before clipboard replacement and checks focus/identity again before simulated paste; stale targets or changed focus stop the automatic paste.
+- A captured target-window and process identity check before replacing the clipboard and again before sending paste; stale/changed targets disable or block automatic paste.
 - HTML clipboard output for paragraphs, headings, lists, quotes, code, colors, and tables, plus a Unicode plain-text fallback.
 - Explicit Apply and Close actions; closing the window hides it so the helper remains available in the tray.
 - No Notion token, browser extension, hosted model account, or recurring service charge.
@@ -79,9 +81,9 @@ If the shortcut is already registered by another application, open the helper fr
 
 ### 3. Review and apply
 
-Choose **Proofread only** to retain paragraph structure and correct mechanics. Choose **Improve structure when useful** to allow semantic blocks when they make the content clearer. Inspect the preview, then click **Apply to Notion** to paste it into the original selection. **Close** or the window's close button does not modify Notion.
+Choose **Proofread only** to retain paragraph structure and correct mechanics. Choose **Improve structure when useful** to allow semantic blocks when they make the content clearer. Inspect the source text and the rich formatting preview, then click **Apply to Notion** to paste to the captured target. The preview is only an approximation; the target editor may paste differently.
 
-The helper uses the original foreground window as the target, but does not verify that it is Notion. Keep the target app open and avoid moving the caret or changing the clipboard while the helper is preparing/applying an edit. Rich HTML clipboard support depends on the target editor; if formatting is not accepted, the clipboard includes plain text to allow a manual paste.
+The helper records the captured window handle and owning process ID. During capture it checks target identity and foreground focus before and after simulated copy, then checks that the clipboard did not change while it read the copied text. Before applying, it checks that the captured identity is still current and checks again after returning focus, immediately before simulated paste. A detected focus/target/clipboard change cancels that step; if the window closed, its handle was reused, or focus changed during Apply, automatic paste is blocked and the preview remains available for manual paste where applicable. These checks cannot make OS clipboard and keyboard operations atomic. The helper does **not** detect if the selection/caret moved inside the same still-open window; verify that the original selection is unchanged before applying. The helper does not verify that the target is Notion. Rich HTML clipboard support depends on the target editor; if formatting is not accepted, the clipboard includes plain text to allow a manual paste.
 
 ### Optional local model benchmark
 
@@ -152,7 +154,7 @@ dotnet build .\src\NotionHelper\NotionHelper.csproj
 dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release
 ```
 
-The app project uses only Windows Desktop framework components. The xUnit suite exercises clipboard serialization, settings validation, and the Ollama request/response protocol using an in-memory fake handler; it does not require a model server, network access, Notion, or user text. The app requires Windows for WPF and Win32 interop.
+The app project uses only Windows Desktop framework components. The xUnit suite exercises clipboard serialization, settings validation, Ollama protocol behavior using an in-memory fake handler, safe WPF preview rendering, and paste sequencing through a fake environment. It does not require a model server, network access, Notion, or access to the system clipboard. The app requires Windows for WPF and Win32 interop.
 
 Build the optional benchmark CLI with:
 

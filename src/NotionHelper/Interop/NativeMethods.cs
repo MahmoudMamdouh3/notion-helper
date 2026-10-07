@@ -16,6 +16,13 @@ internal static class NativeMethods
     internal static extern nint GetForegroundWindow();
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindow(nint hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    internal static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
     internal static extern uint GetClipboardSequenceNumber();
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]

@@ -70,24 +70,27 @@ These criteria have not all been verified by a compilation alone. In particular,
 
 1. The application starts in the Windows notification area.
 2. The user selects text in Notion and presses `Ctrl+Shift+Space`.
-3. The app remembers the foreground window, briefly hides itself, sends `Ctrl+C`, and reads Unicode text from the clipboard.
+3. The app records the foreground window and owning process, briefly hides itself, verifies that target is still foreground before sending `Ctrl+C`, then verifies the target again before reading Unicode text. A clipboard sequence check rejects changes that occur while the copied text is being read.
 4. The helper appears with the captured source and the mode selector.
 5. The user chooses either:
    - **Proofread only** — repair language while retaining prose and paragraph structure.
    - **Improve structure when useful** — repair language and optionally apply semantic blocks/color.
-6. The user clicks Improve text. The app sends a local request to Ollama and displays a plain-text preview.
+6. The user clicks Improve text. The app sends a local request to Ollama and renders the validated semantic blocks in a safe WPF preview built from known text/style elements, not model-authored markup.
 7. The user inspects the preview and clicks Apply to Notion or closes/hides the helper.
-8. Apply writes HTML and Unicode fallback content to the clipboard, returns focus to the remembered window, and sends `Ctrl+V`.
+8. Apply verifies the captured HWND is still a live window owned by the captured process before writing HTML and Unicode fallback content to the clipboard. It then returns focus to that HWND, waits briefly, verifies that it is still the foreground window and still belongs to the captured process, and only then sends `Ctrl+V`.
 
 ### 3.2 Alternate flow and failure behavior
 
 - If no text is selected/copied, the helper explains that the user must select text and try again.
+- If focus or target identity changes during capture, capture is cancelled before reading clipboard content. If the clipboard changes during the read, nothing is sent to the model and the user is asked to try again.
 - If the shortcut is unavailable, the helper remains accessible using the notification-area icon.
 - If Ollama is not responding, the user sees the local endpoint and installation/model guidance; the selection is not sent to a cloud service.
 - If the model is absent, the user is asked to pull the configured model.
 - If output cannot be parsed or fails validation, it is not enabled for Apply.
-- If the original window cannot be focused again, the output remains on the clipboard for manual paste; the helper must not report that an automatic paste succeeded.
-- The preview is textual rather than a faithful WYSIWYG rendering. The rich HTML block conversion itself must be validated in Notion.
+- If the original window has closed, its handle now belongs to another process, or focus changes before paste, automatic paste is blocked. Where clipboard content has already been written, the preview remains available for manual paste; the helper does not report automatic success.
+- A failed new capture clears the prior result and disables Apply, so an earlier preview cannot accidentally be applied to a different capture attempt.
+- The preview uses WPF paragraphs, lists, quotes, code styles, colors, and tables generated from the validated block model. It is a semantic approximation, not a WYSIWYG renderer for Notion or any target editor.
+- Process/window checks cannot prove that the selection or caret inside the same live application window is unchanged. The user must verify the captured source and destination state.
 
 ### 3.3 Trust boundary
 
@@ -166,8 +169,12 @@ src/NotionHelper/
   MainWindow.xaml(.cs)                  Window, tray menu, hotkey, workflow
   Models/ImprovementResult.cs           Validated block contract/plain fallback
   Models/AppSettings.cs                 Local settings model and shortcut presets
+  Models/WindowTargetSnapshot.cs        Transient captured HWND/process identity
+  Presentation/PreviewDocumentBuilder.cs Safe WPF preview from validated semantic data
   Services/OllamaClient.cs              Local request, prompt, parsing, validation
   Services/AppSettingsStore.cs          LocalAppData settings persistence/validation
+  Services/PasteCoordinator.cs          Testable clipboard/focus/paste ordering policy
+  Interop/WindowsPasteEnvironment.cs    WPF clipboard and Win32 paste adapter
   Services/ImprovementResultValidator.cs Allow-listed block/color/table validation
   Services/HtmlClipboardFormatter.cs    Safe HTML and CF_HTML clipboard payload
   Interop/NativeMethods.cs              Win32 hotkey/window/input declarations
@@ -175,6 +182,7 @@ src/NotionHelper/
   Properties/AssemblyInfo.cs            Test-only internals visibility
 tests/NotionHelper.Tests/                Clipboard, settings, and local-protocol tests
 tools/ModelBenchmark/                    Optional synthetic local-model benchmark CLI
+src/NotionHelper/Presentation/           Safe WPF semantic preview builder
 agents/QUICK_START.md                    Compact agent/contributor onboarding map
 agents/KNOWN_ISSUES.md                   Evidence-based current issue ledger
 .github/workflows/windows-ci.yml          Windows build/test/benchmark-build gate
@@ -185,12 +193,15 @@ agents/                                 Product direction and contributor guidan
 ### 6.3 Responsibilities
 
 - **Application lifetime:** starts the window hidden, sets explicit shutdown, and leaves an exit path in the tray menu.
-- **MainWindow:** registers `Ctrl+Shift+Space`, remembers the foreground window, performs the UI state transitions, and gates Apply on a valid response and known target.
+- **MainWindow:** registers the configured global shortcut, captures a window/process identity, performs the UI state transitions, and gates clipboard/paste operations on a valid response and a still-matching target.
+- **WindowTargetSnapshot:** stores only the target HWND, owning process ID, and process name for the current capture session; this identity is transient and is not persisted.
+- **PasteCoordinator:** enforces target check → clipboard write → focus return → wait → foreground/identity recheck → simulated paste. A failed check blocks later destructive actions; focus failures leave output available on the clipboard only if it had already been written.
 - **OllamaClient:** posts a non-streaming JSON-mode chat request to the fixed local endpoint using the configured model; gives proofread and structure-aware requests different constraints; parses JSON and rejects unsupported or malformed structures.
 - **AppSettingsStore:** loads and validates only the model name and a supported shortcut preset in `%LOCALAPPDATA%\NotionHelper\settings.json`; it never stores source text, prompts, or model output.
 - **ModelBenchmark:** runs fixed synthetic cases through the same `OllamaClient`, reports per-case quality checks and elapsed time, and does not persist generated content or change the application default.
 - **ImprovementResult/ContentBlock:** represents only the semantic subset the app knows how to preview and paste; supports plain text fallback.
 - **HtmlClipboardFormatter:** HTML-encodes all model/user text, renders allow-listed semantic blocks and color values, and constructs Windows CF_HTML byte offsets.
+- **PreviewDocumentBuilder:** creates a read-only visual approximation from the validated semantic block model using WPF document elements; it never parses HTML, XAML, or other model-authored markup.
 - **NativeMethods/KeyboardInput:** isolate the small set of Win32 operations required for hotkey registration and simulating copy/paste.
 - **WPF/WinForms:** WPF provides the floating window; WinForms' `NotifyIcon` provides the Windows notification-area icon without an extra package.
 
@@ -294,6 +305,14 @@ The output is intentionally simple HTML and standard tags, not an undocumented N
 
 **Trade-off:** 7B is approximately 4.75 GB on disk and allocated about 4.75 GB of VRAM. With it loaded, `nvidia-smi` reported 7.29 GB of 8.19 GB used (about 0.65 GB free) on the observed system; with 3B loaded, it reported 4.74 GB used (about 3.2 GB free). The 7B model better fits the writing-quality objective, but users running GPU-heavy applications may need to select 3B or unload the model. A three-case synthetic result is not a general quality guarantee.
 
+### ADR-9: Semantic WPF preview and guarded paste handoff (accepted)
+
+**Decision:** render validated semantic blocks with WPF `FlowDocument` elements rather than model-authored HTML/XAML, and put clipboard/focus/paste sequencing behind a coordinator. Capture the target HWND and owning process ID, validate before writing the clipboard, and check focus plus target identity again before sending paste.
+
+**Why:** the previous plain-text preview hid formatting choices, while the previous Apply path could still paste after an HWND was invalid/reused or foreground focus moved during the handoff. A semantic preview is safe because text remains text, and an injectable coordinator allows automated tests to verify that a failure blocks simulated input without touching a user's clipboard or editor.
+
+**Trade-offs and residual risk:** the WPF preview is only an approximation of target-editor rendering. Process identity does not prove selection continuity inside that process/window. The coordinator's unit tests prove ordering under injected states, not actual Win32 timing, clipboard manager interactions, or Notion rich-paste semantics. Clipboard capture still replaces prior contents and arbitrary clipboard formats are not preserved.
+
 ## 8. Data flow and privacy
 
 1. The user initiates capture in the foreground app. The helper sends `Ctrl+C`; Notion/browser/app behavior determines what enters the Windows clipboard.
@@ -370,7 +389,7 @@ The model name defaults to `qwen2.5:7b` and can be changed in the collapsed **Lo
 
 ### Automated tests
 
-The xUnit suite covers HTML encoding, grouping consecutive numbered-list items, UTF-8 CF_HTML offsets with non-ASCII content, tab-separated table fallback, proofread-mode formatting restrictions, rectangular table validation, local settings round-trip and validation, supported shortcut mappings, and Ollama request/response behavior through an in-memory fake HTTP handler. These tests do not require Ollama, a network connection, Notion, or real user writing.
+The xUnit suite covers HTML encoding, grouping consecutive numbered-list items, UTF-8 CF_HTML offsets with non-ASCII content, tab-separated table fallback, proofread-mode formatting restrictions, rectangular table validation, local settings round-trip and validation, supported shortcut mappings, Ollama request/response behavior through an in-memory fake HTTP handler, WPF semantic preview rendering on an STA thread, captured window/process identity matching, and paste sequencing/failure paths through a fake environment. These tests do not require Ollama, a network connection, Notion, a real system clipboard, or real user writing.
 
 The Windows GitHub Actions workflow builds the WPF app, runs the deterministic test suite, and builds the benchmark CLI on pushes and pull requests. It deliberately does not download model weights or run nondeterministic inference.
 
@@ -379,7 +398,7 @@ Run the optional benchmark with `dotnet run --project .\tools\ModelBenchmark\Mod
 Remaining high-value automated tests:
 
 1. **UI state transitions:** capture, empty selection, valid result, invalid response, Apply disabled before a response, close without replacement, and explicit Apply only.
-2. **Clipboard/native workflow:** use an isolated local editor fixture if it can be run without altering a user's clipboard or page; never mutate a real Notion workspace as an unattended test.
+2. **Native workflow:** automated tests verify coordinator policy, target identity, and pure payload serialization, but do not invoke real global shortcuts or alter the system clipboard. Use an isolated local editor fixture if it can run without stealing a user's clipboard or altering a page.
 3. **Model quality:** extend synthetic benchmark cases only when they represent a stable measurable requirement; keep real user text out of tests and CI.
 
 ### Manual end-to-end matrix
@@ -396,7 +415,9 @@ Remaining high-value automated tests:
 | Ollama stopped | Actionable local error; source retained; no cloud fallback |
 | Model missing/invalid output | Actionable error; Apply remains disabled |
 | User closes after preview | Original Notion selection is unchanged |
-| Apply to Notion | Preview is pasted into the intended selection; inspect semantic blocks and color |
+| Apply to Notion | User verifies the captured selection remains unchanged; inspect semantic blocks and color |
+| Captured window closes or HWND is reused | Apply is disabled or blocked before clipboard replacement |
+| Foreground focus changes during Apply handoff | No simulated paste is sent; leave the rich result on clipboard for manual recovery |
 | Clipboard/image formats before capture | Document current limitation; do not claim arbitrary clipboard restoration |
 | Shortcut conflict | Tray icon still opens app and communicates the conflict |
 
@@ -416,13 +437,13 @@ Compilation alone does not verify these integration behaviors. Test against the 
 
 - Validate the shortcut, focus and clipboard flow across Notion updates.
 - Preserve clipboard contents to the extent Windows clipboard APIs allow; clearly disclose lossy formats and contention.
-- Add a visible diff or side-by-side preview.
+- Add a visible diff or side-by-side preview. (A semantic WPF formatting preview is implemented; character-level source/result diff remains open.)
 - Add model and keyboard-shortcut settings with safe validation. (Implemented: model name and three supported shortcut presets are saved locally.)
 - Add automatic tests for response validation and CF_HTML offsets. (Implemented: focused serializer, settings, prompt, and loopback protocol tests.)
 - Add Windows CI for build, deterministic tests, and benchmark-tool compilation. (Implemented; live inference is intentionally not part of CI.)
 - Add a repeatable synthetic model benchmark using the same production prompts and validated response contract. (Implemented; candidate comparison remains to be run and recorded.)
 - Package an installer and evaluate signing/update options.
-- Verify target focus, selection, clipboard, and paste behavior safely; actual Notion rich paste remains unverified.
+- Verify target focus, selection, clipboard, and paste behavior safely; HWND/process identity guards and automated semantic preview tests are implemented, but selection continuity and actual Notion rich paste remain unverified.
 
 **Decision gate:** choose between native clipboard continuation, browser extension, or official API based on failures reported by users rather than assumptions.
 
@@ -447,9 +468,9 @@ Compilation alone does not verify these integration behaviors. Test against the 
 Known limitations:
 
 1. **Not yet end-to-end tested in Notion.** The HTML clipboard uses interoperable tags, but Notion may normalize, strip, or reinterpret styles and table/list structure.
-2. **Plain-text preview.** The preview communicates the text but does not visually render final rich formatting.
+2. **Approximate preview.** The WPF preview renders supported semantic blocks, colors, and tables from validated data, but does not reproduce Notion's exact styling or paste normalization and has no character-level diff.
 3. **Clipboard capture replaces clipboard contents.** The implementation does not restore arbitrary clipboard formats after `Ctrl+C`; rich output also becomes the new clipboard contents.
-4. **Focus and selection are timing-sensitive.** Copy and paste use simulated keyboard input; app switching, dialogs, focus restrictions, or the user's actions can disrupt the intended target.
+4. **Focus and selection are timing-sensitive.** HWND/process identity and foreground checks bracket simulated copy/paste; a clipboard sequence check detects clipboard changes during the capture read. These checks reduce stale-target risk but cannot verify the selected range or caret within the same live window, and cannot make the check-to-input interval atomic. Simulated keyboard input can still be disrupted by app switching, dialogs, focus restrictions, or user actions.
 5. **App-agnostic shortcut.** It can capture selected text from any application and attempt to paste back there; it does not currently prove the target is Notion.
 6. **Model quality is variable.** A 3B model may follow the JSON schema imperfectly or miss nuanced corrections/formatting. Structural validation is not semantic verification.
 7. **No formatting diff, undo, or built-in rollback.** Notion's own undo may recover a paste, but this must be checked manually.
@@ -481,6 +502,8 @@ Validation sequence:
 | 2026-10-07 | Require a preview and explicit Apply | Prevents silent destructive rewrites and keeps the user in control |
 | 2026-10-07 | Persist model/shortcut preferences locally while pinning Ollama to loopback | Adds user control without widening inference to remote services or persisting writing |
 | 2026-10-07 | Promote qwen2.5:7b Q4_K_M after a 3/3 vs 1/3 synthetic comparison | Improves measured writing/structure quality; keeps qwen2.5:3b selectable due to its lower VRAM use |
+| 2026-10-07 | Render preview from semantic WPF elements and guard paste with a testable coordinator | Makes formatting choices visible, avoids model-authored markup, and blocks stale/focus-changed target handoffs |
+| 2026-10-07 | Recheck target focus around simulated copy and verify clipboard stability during selection read | Prevents sending text after an observed focus/identity change and rejects reads that race a clipboard update; OS input and clipboard operations cannot be made atomic |
 
 Add entries when decisions change; do not erase superseded decisions without preserving their history and rationale.
 
@@ -494,19 +517,14 @@ Add entries when decisions change; do not erase superseded decisions without pre
 - Historical quality check on `qwen2.5:3b` was mixed. Its initial prompt example also incorrectly showed `rows` on a paragraph; a later automated benchmark exposed and the prompt was fixed. The earlier Qwen3 4B evaluation was not performed under the installed 0.35.1 runtime.
 - The manual selection/focus/rich-paste flow has not yet been validated inside the Notion desktop app.
 
-**Next phase implementation verification (2026-10-07)**
+**Preview, capture, and paste reliability verification (2026-10-07)**
 
-- `dotnet build .\src\NotionHelper\NotionHelper.csproj -c Release`: passed with 0 warnings and 0 errors.
-- `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release --logger "console;verbosity=normal"`: passed, 29/29 tests; reported test duration 0.5826 seconds.
-- `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release --no-restore`: passed with 0 warnings and 0 errors.
-- Added Windows GitHub Actions for the app build, deterministic tests, and benchmark CLI build. Live Ollama inference is not run in CI.
-- The first hosted CI run caught that the unanchored `.gitignore` rule `models/` hid the entire C# `src/NotionHelper/Models/` source folder on Windows, including both `ImprovementResult.cs` and the new `AppSettings.cs`. The model-weight ignores are now repository-root anchored, both source files are tracked, and contributor rules require checking new source against ignore rules.
-- The corrected hosted workflow passed on commit `4fb740e7e8c5ae30580f7d4959c53c9df06f65d9`: Windows app build succeeded with 0 warnings, all 29 tests passed, and the benchmark CLI build succeeded with 0 warnings ([GitHub Actions run](https://github.com/MahmoudMamdouh3/notion-helper/actions/runs/37633328176)).
-- Ollama 0.35.1 locally listed both `qwen2.5:3b` (Q4_K_M, 1.9 GB on disk) and `qwen2.5:7b` (Q4_K_M, 4.7 GB on disk). The 7B model was fully GPU placed at 4,748,056,984 bytes; while loaded, `nvidia-smi` reported 7,291 MiB used of 8,188 MiB (666 MiB free). The 3B model was fully GPU placed at 2,159,374,499 bytes; while loaded, 4,742 MiB was used (3,215 MiB free).
-- With the final prompt, separate table shape, and temperature 0.2, a single synthetic run scored **qwen2.5:7b 3/3** (proofreading, labeled-note structure, no unnecessary prose decoration; mean 2,854 ms including model-load time) and **qwen2.5:3b 1/3** (missed all three checked spelling corrections and did not structure labeled notes; mean 1,606 ms). Neither changed ordinary-prose formatting. This is a tiny synthetic sample, not representative-quality certification; 7B became the default, with 3B retained for lower VRAM use.
-- Model output contract failure found by the benchmark was traced to the generic JSON example showing a `rows` property on a paragraph. The prompt now shows distinct paragraph/table examples and explicitly forbids `rows` on non-table blocks. This made both models produce schema-valid responses in the final observed runs.
-- WPF startup smoke test: the Release app remained running for three seconds in tray mode, then the exact smoke-test process was stopped. It did not use the clipboard, Ollama, or Notion page content.
-- The Ollama model was stopped after benchmarking; the downloaded model files remain available locally.
-- No actual Notion page, clipboard, or user writing was used by the automated model benchmark. Notion selection/focus/rich-paste behavior remains unverified.
+- `dotnet build .\src\NotionHelper\NotionHelper.csproj -c Release`: passed with zero warnings and zero errors.
+- `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release`: passed, 45/45 tests. Coverage includes WPF semantic preview rendering on an STA thread, seven fake-environment selection-capture scenarios, and five fake-environment paste-coordinator scenarios. No live clipboard, Notion content, or Ollama server was used by the test suite.
+- `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
+- Startup smoke test: the Release app process remained running for four seconds and was then stopped by its exact process ID. This did not interact with the clipboard or Notion.
+- The selection-capture tests verify target/focus changes block the corresponding clipboard read, unchanged clipboard sequence blocks reading, a sequence change during the read rejects the captured text, and success follows the expected validation/copy/read order. Paste tests verify that stale targets prevent clipboard writes and that focus/identity failures block paste.
+- Hosted Windows GitHub Actions verification will run after these changes are pushed.
+- No actual Notion page or real system clipboard was modified. Notion selection continuity and rich-paste normalization remain unverified.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.

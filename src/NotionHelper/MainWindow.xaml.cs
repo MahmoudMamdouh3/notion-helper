@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -6,12 +7,9 @@ using System.Windows;
 using System.Windows.Interop;
 using NotionHelper.Interop;
 using NotionHelper.Models;
+using NotionHelper.Presentation;
 using NotionHelper.Services;
 using WpfApplication = System.Windows.Application;
-using WpfClipboard = System.Windows.Clipboard;
-using WpfDataFormats = System.Windows.DataFormats;
-using WpfDataObject = System.Windows.DataObject;
-using WpfTextDataFormat = System.Windows.TextDataFormat;
 using Forms = System.Windows.Forms;
 
 namespace NotionHelper;
@@ -22,12 +20,15 @@ public partial class MainWindow : Window
     private const int WmHotkey = 0x0312;
 
     private readonly AppSettingsStore _settingsStore = new();
+    private readonly WindowsPasteEnvironment _pasteEnvironment = new();
     private readonly string? _settingsLoadError;
     private readonly Forms.NotifyIcon _trayIcon;
+    private readonly PasteCoordinator _pasteCoordinator;
+    private readonly SelectionCaptureCoordinator _selectionCaptureCoordinator;
     private AppSettings _settings;
     private OllamaClient _ollama;
     private HwndSource? _source;
-    private nint _targetWindow;
+    private WindowTargetSnapshot _target;
     private ImprovementResult? _result;
     private bool _allowClose;
     private bool _hotkeyRegistered;
@@ -49,6 +50,8 @@ public partial class MainWindow : Window
         }
 
         _ollama = new OllamaClient(_settings.Model);
+        _pasteCoordinator = new PasteCoordinator(_pasteEnvironment);
+        _selectionCaptureCoordinator = new SelectionCaptureCoordinator(_pasteEnvironment);
         InitializeComponent();
         ModelNameInput.Text = _settings.Model;
         ShortcutSelector.SelectedValue = _settings.Shortcut.ToString();
@@ -128,63 +131,66 @@ public partial class MainWindow : Window
 
     private async Task CaptureSelectionAsync()
     {
-        _targetWindow = NativeMethods.GetForegroundWindow();
-        if (_targetWindow == IntPtr.Zero || _targetWindow == new WindowInteropHelper(this).Handle)
+        _target = default;
+        _result = null;
+        ApplyButton.IsEnabled = false;
+        SourceText.Clear();
+        PreviewViewer.Document = new System.Windows.Documents.FlowDocument();
+
+        var targetWindow = NativeMethods.GetForegroundWindow();
+        if (targetWindow == IntPtr.Zero || targetWindow == new WindowInteropHelper(this).Handle ||
+            !NativeMethods.IsWindow(targetWindow))
         {
             StatusText.Text = $"Select text first, then press {ShortcutPresets.GetBinding(_settings.Shortcut).DisplayName}.";
             ShowAndActivate();
             return;
         }
 
-        var clipboardSequence = NativeMethods.GetClipboardSequenceNumber();
-        Hide();
-        await Task.Delay(180);
-        try
+        var targetThread = NativeMethods.GetWindowThreadProcessId(targetWindow, out var targetProcessId);
+        if (targetThread == 0 || targetProcessId == 0)
         {
-            KeyboardInput.SendCopy();
-        }
-        catch (InvalidOperationException exception)
-        {
-            StatusText.Text = exception.Message;
+            StatusText.Text = "Could not identify the selected-text target window. Try the shortcut again.";
             ShowAndActivate();
             return;
         }
 
-        await Task.Delay(250);
-
-        string selectedText;
+        var processName = GetProcessName(targetProcessId);
+        _target = new WindowTargetSnapshot(targetWindow, targetProcessId, processName);
+        var clipboardSequence = NativeMethods.GetClipboardSequenceNumber();
+        Hide();
         try
         {
-            if (NativeMethods.GetClipboardSequenceNumber() == clipboardSequence)
+            var outcome = await _selectionCaptureCoordinator.CaptureAsync(_target, clipboardSequence);
+            if (outcome.Disposition != SelectionCaptureDisposition.Captured)
             {
-                StatusText.Text = "No text was copied. Select text in Notion and try again.";
+                StatusText.Text = outcome.Disposition switch
+                {
+                    SelectionCaptureDisposition.TargetChanged =>
+                        $"Selection capture was cancelled because the target changed: {outcome.Error}",
+                    SelectionCaptureDisposition.FocusChanged =>
+                        "Selection capture was cancelled because the foreground window changed.",
+                    SelectionCaptureDisposition.ClipboardUnchanged or SelectionCaptureDisposition.EmptyText =>
+                        "No text was copied. Select text in Notion and try again.",
+                    SelectionCaptureDisposition.ClipboardChanged =>
+                        "The clipboard changed while reading the selection. Nothing was sent to the model; try capturing again.",
+                    _ => throw new InvalidOperationException("Unexpected selection capture outcome.")
+                };
                 ShowAndActivate();
                 return;
             }
 
-            selectedText = WpfClipboard.ContainsText()
-                ? WpfClipboard.GetText(WpfTextDataFormat.UnicodeText)
-                : string.Empty;
+            SourceText.Text = outcome.Text
+                ?? throw new InvalidOperationException("The selection capture returned no text.");
         }
-        catch (ExternalException exception)
+        catch (Exception exception) when (exception is InvalidOperationException or ExternalException)
         {
-            StatusText.Text = $"Could not read the selection from the clipboard: {exception.Message}";
+            StatusText.Text = exception is ExternalException
+                ? $"Could not read the selection from the clipboard: {exception.Message}"
+                : exception.Message;
             ShowAndActivate();
             return;
         }
-
-        if (string.IsNullOrWhiteSpace(selectedText))
-        {
-            StatusText.Text = "No text was copied. Select text in Notion and try again.";
-            ShowAndActivate();
-            return;
-        }
-
-        SourceText.Text = selectedText;
-        PreviewText.Clear();
-        _result = null;
-        ApplyButton.IsEnabled = false;
-        StatusText.Text = "Selection captured. Choose a mode and improve it.";
+        StatusText.Text = $"Selection captured from {_target.ProcessName}. Keep its selection unchanged before applying.";
         ShowAndActivate();
     }
 
@@ -198,7 +204,7 @@ public partial class MainWindow : Window
         var source = SourceText.Text;
         if (string.IsNullOrWhiteSpace(source))
         {
-            StatusText.Text = "Capture a text selection with Ctrl+Shift+Space before improving it.";
+            StatusText.Text = $"Capture a text selection with {ShortcutPresets.GetBinding(_settings.Shortcut).DisplayName} before improving it.";
             return;
         }
 
@@ -212,9 +218,12 @@ public partial class MainWindow : Window
                 ? ImprovementMode.StructureWhenUseful
                 : ImprovementMode.Proofread;
             _result = await _ollama.ImproveAsync(source, mode);
-            PreviewText.Text = _result.ToPlainText();
-            ApplyButton.IsEnabled = _targetWindow != IntPtr.Zero;
-            StatusText.Text = $"Preview ready. {_result.Blocks.Count} content block(s); nothing changes until you apply.";
+            PreviewViewer.Document = PreviewDocumentBuilder.Create(_result);
+            var targetIsCurrent = _pasteEnvironment.IsTargetCurrent(_target, out var targetError);
+            ApplyButton.IsEnabled = targetIsCurrent;
+            StatusText.Text = targetIsCurrent
+                ? $"Preview ready for {_target.ProcessName}. {_result.Blocks.Count} content block(s); verify the selection is unchanged before applying."
+                : $"Preview is ready, but Apply is disabled: {targetError}";
         }
         catch (Exception exception) when (
             exception is HttpRequestException or TaskCanceledException or InvalidOperationException
@@ -337,32 +346,25 @@ public partial class MainWindow : Window
 
     private async void ApplyButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_result is null || _targetWindow == IntPtr.Zero)
+        if (_result is null)
         {
             StatusText.Text = "Capture a Notion selection and generate a preview before applying.";
             return;
         }
 
+        if (!_pasteEnvironment.IsTargetCurrent(_target, out var targetError))
+        {
+            ApplyButton.IsEnabled = false;
+            StatusText.Text = $"Apply is disabled because the original target is no longer available: {targetError} Capture the selection again.";
+            return;
+        }
+
         try
         {
-            var html = HtmlClipboardFormatter.ToClipboardHtml(_result);
-            var data = new WpfDataObject();
-            data.SetData(WpfDataFormats.Html, html);
-            data.SetData(WpfDataFormats.UnicodeText, _result.ToPlainText());
-            WpfClipboard.SetDataObject(data, true);
-
             ApplyButton.IsEnabled = false;
             Hide();
-            if (!NativeMethods.SetForegroundWindow(_targetWindow))
-            {
-                StatusText.Text = "Could not return focus to the original window. The preview is on the clipboard; paste it into Notion manually.";
-                ShowAndActivate();
-                return;
-            }
-
-            await Task.Delay(180);
-            KeyboardInput.SendPaste();
-            StatusText.Text = "Paste sent to the original window. Verify the result in Notion.";
+            var outcome = await _pasteCoordinator.ApplyAsync(_result, _target);
+            StatusText.Text = outcome.Message;
             ShowAndActivate();
         }
         catch (Exception exception) when (exception is ExternalException or InvalidOperationException)
@@ -385,6 +387,20 @@ public partial class MainWindow : Window
     }
 
     private void CloseButton_OnClick(object sender, RoutedEventArgs e) => Hide();
+
+    private static string GetProcessName(uint processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById((int)processId);
+            return process.ProcessName;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return "unknown application";
+        }
+    }
 
     private void ShowAndActivate()
     {

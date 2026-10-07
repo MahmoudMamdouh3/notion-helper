@@ -2,7 +2,7 @@
 
 ## What this project is
 
-Notion Helper is a Windows .NET 10 WPF tray application. A global shortcut captures selected text through the Windows clipboard, sends it to a user-installed Ollama model at `127.0.0.1`, shows a preview, then pastes HTML plus a Unicode text fallback only after the user selects Apply.
+Notion Helper is a Windows .NET 10 WPF tray application. A global shortcut captures selected text through the Windows clipboard, checks the captured target around simulated copy and clipboard read, sends it to a user-installed Ollama model at `127.0.0.1`, shows a semantic preview, then pastes HTML plus a Unicode text fallback only after the user selects Apply.
 
 ```text
 WPF/tray + hotkey -> clipboard capture -> OllamaClient -> validated block model
@@ -27,6 +27,8 @@ WPF/tray + hotkey -> clipboard capture -> OllamaClient -> validated block model
 | Current gaps and risks | [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) |
 | Window, tray, hotkey, capture/apply flow | [`../src/NotionHelper/MainWindow.xaml.cs`](../src/NotionHelper/MainWindow.xaml.cs) |
 | WPF layout and controls | [`../src/NotionHelper/MainWindow.xaml`](../src/NotionHelper/MainWindow.xaml) |
+| Safe semantic preview | [`../src/NotionHelper/Presentation/PreviewDocumentBuilder.cs`](../src/NotionHelper/Presentation/PreviewDocumentBuilder.cs) |
+| Captured target identity | [`../src/NotionHelper/Models/WindowTargetSnapshot.cs`](../src/NotionHelper/Models/WindowTargetSnapshot.cs) |
 | Local model protocol and prompts | [`../src/NotionHelper/Services/OllamaClient.cs`](../src/NotionHelper/Services/OllamaClient.cs) |
 | Settings and shortcut validation | [`../src/NotionHelper/Models/AppSettings.cs`](../src/NotionHelper/Models/AppSettings.cs), [`../src/NotionHelper/Services/AppSettingsStore.cs`](../src/NotionHelper/Services/AppSettingsStore.cs) |
 | Output contract and HTML clipboard | [`../src/NotionHelper/Models/ImprovementResult.cs`](../src/NotionHelper/Models/ImprovementResult.cs), [`../src/NotionHelper/Services/ImprovementResultValidator.cs`](../src/NotionHelper/Services/ImprovementResultValidator.cs), [`../src/NotionHelper/Services/HtmlClipboardFormatter.cs`](../src/NotionHelper/Services/HtmlClipboardFormatter.cs) |

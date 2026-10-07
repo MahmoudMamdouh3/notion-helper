@@ -91,20 +91,55 @@
                     BorderThickness="0" Click="ImproveButton_OnClick"/>
         </Grid>
 
-        <Grid Grid.Row="5" Margin="0,0,0,14">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-            <TextBlock Text="Preview" FontWeight="SemiBold" Margin="0,0,0,3"/>
-            <TextBlock Grid.Row="1" Text="Formatting preview is an approximation; the target app may paste it differently."
-                       Foreground="#666A63" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,7"/>
-            <FlowDocumentScrollViewer x:Name="PreviewViewer" Grid.Row="2"
-                                     VerticalScrollBarVisibility="Auto"
-                                     IsSelectionEnabled="True" Background="White"
-                                     BorderBrush="#E1E2DE" BorderThickness="1"/>
-        </Grid>
+        <TabControl x:Name="PreviewTabs" Grid.Row="5" Margin="0,0,0,14">
+            <TabItem Header="Formatted result">
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Formatting preview is an approximation; the target app may paste it differently."
+                               Foreground="#666A63" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,7"/>
+                    <FlowDocumentScrollViewer x:Name="PreviewViewer" Grid.Row="1"
+                                             VerticalScrollBarVisibility="Auto"
+                                             IsSelectionEnabled="True" Background="White"
+                                             BorderBrush="#E1E2DE" BorderThickness="1"/>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Text changes">
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="TextDiffNoticeText"
+                               Text="Removed wording is red and struck through; additions are green-highlighted. Formatting-only changes appear in Formatted result."
+                               Foreground="#666A63" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,7"/>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="Original" FontWeight="SemiBold" Margin="0,0,6,5"/>
+                        <TextBlock Grid.Column="1" Text="Proposed" FontWeight="SemiBold" Margin="6,0,0,5"/>
+                        <FlowDocumentScrollViewer x:Name="OriginalChangesViewer" Grid.Row="1"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 IsSelectionEnabled="True" Background="White"
+                                                 BorderBrush="#E1E2DE" BorderThickness="1"
+                                                 Margin="0,0,3,0"/>
+                        <FlowDocumentScrollViewer x:Name="ProposedChangesViewer" Grid.Row="1" Grid.Column="1"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 IsSelectionEnabled="True" Background="White"
+                                                 BorderBrush="#E1E2DE" BorderThickness="1"
+                                                 Margin="3,0,0,0"/>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
 
         <Grid Grid.Row="6">
             <Grid.ColumnDefinitions>

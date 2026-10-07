@@ -75,13 +75,14 @@ These criteria have not all been verified by a compilation alone. In particular,
 5. The user chooses either:
    - **Proofread only** — repair language while retaining prose and paragraph structure.
    - **Improve structure when useful** — repair language and optionally apply semantic blocks/color.
-6. The user clicks Improve text. The app sends a local request to Ollama and renders the validated semantic blocks in a safe WPF preview built from known text/style elements, not model-authored markup.
-7. The user inspects the preview and clicks Apply to Notion or closes/hides the helper.
+6. The user clicks Improve text. The app sends a local request to Ollama and renders the validated semantic blocks in a safe WPF preview built from known text/style elements, not model-authored markup. A separate side-by-side text comparison highlights added and removed word/punctuation tokens.
+7. The user inspects the formatted result and text changes, then clicks Apply to Notion or closes/hides the helper.
 8. Apply verifies the captured HWND is still a live window owned by the captured process before writing HTML and Unicode fallback content to the clipboard. It then returns focus to that HWND, waits briefly, verifies that it is still the foreground window and still belongs to the captured process, and only then sends `Ctrl+V`.
 
 ### 3.2 Alternate flow and failure behavior
 
 - If no text is selected/copied, the helper explains that the user must select text and try again.
+- A new capture request while local inference is in progress is rejected, preserving the source/result pair currently being generated.
 - If focus or target identity changes during capture, capture is cancelled before reading clipboard content. If the clipboard changes during the read, nothing is sent to the model and the user is asked to try again.
 - If the shortcut is unavailable, the helper remains accessible using the notification-area icon.
 - If Ollama is not responding, the user sees the local endpoint and installation/model guidance; the selection is not sent to a cloud service.
@@ -90,6 +91,7 @@ These criteria have not all been verified by a compilation alone. In particular,
 - If the original window has closed, its handle now belongs to another process, or focus changes before paste, automatic paste is blocked. Where clipboard content has already been written, the preview remains available for manual paste; the helper does not report automatic success.
 - A failed new capture clears the prior result and disables Apply, so an earlier preview cannot accidentally be applied to a different capture attempt.
 - The preview uses WPF paragraphs, lists, quotes, code styles, colors, and tables generated from the validated block model. It is a semantic approximation, not a WYSIWYG renderer for Notion or any target editor.
+- The text comparison compares the captured source with the result's plain-text representation. It highlights additions and removals while preserving unchanged text. Formatting-only changes appear only in the formatted preview. To bound memory/time for pathological inputs, comparisons above one million LCS cells are shown as a disclosed whole-text replacement rather than a detailed diff.
 - Process/window checks cannot prove that the selection or caret inside the same live application window is unchanged. The user must verify the captured source and destination state.
 
 ### 3.3 Trust boundary
@@ -468,12 +470,12 @@ Compilation alone does not verify these integration behaviors. Test against the 
 Known limitations:
 
 1. **Not yet end-to-end tested in Notion.** The HTML clipboard uses interoperable tags, but Notion may normalize, strip, or reinterpret styles and table/list structure.
-2. **Approximate preview.** The WPF preview renders supported semantic blocks, colors, and tables from validated data, but does not reproduce Notion's exact styling or paste normalization and has no character-level diff.
+2. **Approximate preview/comparison.** The WPF preview renders supported semantic blocks, colors, and tables from validated data but does not reproduce Notion's exact styling or paste normalization. The side-by-side text comparison is token-based, does not represent formatting-only differences or align moved blocks, and degrades to a disclosed whole-text replacement for large changes.
 3. **Clipboard capture replaces clipboard contents.** The implementation does not restore arbitrary clipboard formats after `Ctrl+C`; rich output also becomes the new clipboard contents.
 4. **Focus and selection are timing-sensitive.** HWND/process identity and foreground checks bracket simulated copy/paste; a clipboard sequence check detects clipboard changes during the capture read. These checks reduce stale-target risk but cannot verify the selected range or caret within the same live window, and cannot make the check-to-input interval atomic. Simulated keyboard input can still be disrupted by app switching, dialogs, focus restrictions, or user actions.
 5. **App-agnostic shortcut.** It can capture selected text from any application and attempt to paste back there; it does not currently prove the target is Notion.
 6. **Model quality is variable.** A 3B model may follow the JSON schema imperfectly or miss nuanced corrections/formatting. Structural validation is not semantic verification.
-7. **No formatting diff, undo, or built-in rollback.** Notion's own undo may recover a paste, but this must be checked manually.
+7. **No formatting diff, undo, or built-in rollback.** The text comparison covers wording and punctuation only; it does not show a separate structural/formatting diff. Notion's own undo may recover a paste, but this must be checked manually.
 8. **Partially configurable.** The model name and three global-hotkey presets are locally configurable. The Ollama endpoint and timeout remain fixed; there is no model download management or auto-update.
 9. **Windows-only.** WPF, WinForms notification icon, and Win32 input/shortcut calls prevent direct macOS/Linux use.
 10. **No Notion API, chart renderer, or database builder.** Rich tables may paste; charts and managed databases are later, separate workflows.
@@ -504,6 +506,7 @@ Validation sequence:
 | 2026-10-07 | Promote qwen2.5:7b Q4_K_M after a 3/3 vs 1/3 synthetic comparison | Improves measured writing/structure quality; keeps qwen2.5:3b selectable due to its lower VRAM use |
 | 2026-10-07 | Render preview from semantic WPF elements and guard paste with a testable coordinator | Makes formatting choices visible, avoids model-authored markup, and blocks stale/focus-changed target handoffs |
 | 2026-10-07 | Recheck target focus around simulated copy and verify clipboard stability during selection read | Prevents sending text after an observed focus/identity change and rejects reads that race a clipboard update; OS input and clipboard operations cannot be made atomic |
+| 2026-10-07 | Add a side-by-side bounded text comparison alongside the semantic preview | Makes wording changes easier to inspect without hiding semantic formatting; caps LCS work and explicitly discloses coarse comparison for large inputs |
 
 Add entries when decisions change; do not erase superseded decisions without preserving their history and rationale.
 
@@ -526,5 +529,13 @@ Add entries when decisions change; do not erase superseded decisions without pre
 - The selection-capture tests verify target/focus changes block the corresponding clipboard read, unchanged clipboard sequence blocks reading, a sequence change during the read rejects the captured text, and success follows the expected validation/copy/read order. Paste tests verify that stale targets prevent clipboard writes and that focus/identity failures block paste.
 - Hosted Windows GitHub Actions run `37658850345` passed for pushed commit `967a12c`; all three workflow steps (application build, deterministic tests, benchmark build) succeeded.
 - No actual Notion page or real system clipboard was modified. Notion selection continuity and rich-paste normalization remain unverified.
+
+**Text comparison verification (2026-10-07)**
+
+- `dotnet build .\src\NotionHelper\NotionHelper.csproj -c Release`: passed with zero warnings and zero errors.
+- `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release`: passed, 50/50 tests, including text/punctuation replacement, Unicode text elements, line-break preservation, coarse fallback at the work budget, and WPF original/proposed rendering.
+- `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
+- The Release app remained running for four seconds during startup smoke testing and was then stopped by its exact process ID. No clipboard or Notion interaction was performed.
+- The text comparison uses synthetic examples only. Real Notion rendering, selection continuity, and formatting-only comparison remain unverified.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.

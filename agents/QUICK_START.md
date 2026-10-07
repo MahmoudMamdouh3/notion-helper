@@ -28,6 +28,7 @@ WPF/tray + hotkey -> clipboard capture -> OllamaClient -> validated block model
 | Window, tray, hotkey, capture/apply flow | [`../src/NotionHelper/MainWindow.xaml.cs`](../src/NotionHelper/MainWindow.xaml.cs) |
 | WPF layout and controls | [`../src/NotionHelper/MainWindow.xaml`](../src/NotionHelper/MainWindow.xaml) |
 | Safe semantic preview | [`../src/NotionHelper/Presentation/PreviewDocumentBuilder.cs`](../src/NotionHelper/Presentation/PreviewDocumentBuilder.cs) |
+| Source/result text comparison | [`../src/NotionHelper/Presentation/TextDiffBuilder.cs`](../src/NotionHelper/Presentation/TextDiffBuilder.cs) |
 | Captured target identity | [`../src/NotionHelper/Models/WindowTargetSnapshot.cs`](../src/NotionHelper/Models/WindowTargetSnapshot.cs) |
 | Local model protocol and prompts | [`../src/NotionHelper/Services/OllamaClient.cs`](../src/NotionHelper/Services/OllamaClient.cs) |
 | Settings and shortcut validation | [`../src/NotionHelper/Models/AppSettings.cs`](../src/NotionHelper/Models/AppSettings.cs), [`../src/NotionHelper/Services/AppSettingsStore.cs`](../src/NotionHelper/Services/AppSettingsStore.cs) |

@@ -131,11 +131,21 @@ public partial class MainWindow : Window
 
     private async Task CaptureSelectionAsync()
     {
+        if (_isImproving)
+        {
+            StatusText.Text = "Wait for the current local model request to finish before capturing another selection.";
+            ShowAndActivate();
+            return;
+        }
+
         _target = default;
         _result = null;
         ApplyButton.IsEnabled = false;
         SourceText.Clear();
         PreviewViewer.Document = new System.Windows.Documents.FlowDocument();
+        OriginalChangesViewer.Document = new System.Windows.Documents.FlowDocument();
+        ProposedChangesViewer.Document = new System.Windows.Documents.FlowDocument();
+        TextDiffNoticeText.Text = "Removed wording is red and struck through; additions are green-highlighted. Formatting-only changes appear in Formatted result.";
 
         var targetWindow = NativeMethods.GetForegroundWindow();
         if (targetWindow == IntPtr.Zero || targetWindow == new WindowInteropHelper(this).Handle ||
@@ -219,6 +229,13 @@ public partial class MainWindow : Window
                 : ImprovementMode.Proofread;
             _result = await _ollama.ImproveAsync(source, mode);
             PreviewViewer.Document = PreviewDocumentBuilder.Create(_result);
+            var textDiff = TextDiffBuilder.Compare(source, _result.ToPlainText());
+            OriginalChangesViewer.Document = TextDiffBuilder.CreateDocument(textDiff, proposed: false);
+            ProposedChangesViewer.Document = TextDiffBuilder.CreateDocument(textDiff, proposed: true);
+            TextDiffNoticeText.Text = textDiff.IsCoarse
+                ? "This text exceeds the detailed comparison limit, so each pane shows the complete original or proposed text. Formatting-only changes appear in Formatted result."
+                : "Removed wording is red and struck through; additions are green-highlighted. Formatting-only changes appear in Formatted result.";
+            PreviewTabs.SelectedIndex = 0;
             var targetIsCurrent = _pasteEnvironment.IsTargetCurrent(_target, out var targetError);
             ApplyButton.IsEnabled = targetIsCurrent;
             StatusText.Text = targetIsCurrent

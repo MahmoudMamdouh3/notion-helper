@@ -33,7 +33,7 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 - Model runtime: Ollama HTTP API at `http://127.0.0.1:11434`.
 - Default model: `qwen2.5:7b` Q4_K_M, promoted after a 3/3 synthetic benchmark result versus 1/3 for `qwen2.5:3b`; the 3B model remains available as a lower-VRAM fallback. Model name and shortcut preset are stored in local settings.
 - Modes: proofreading-only and optional structure-aware formatting.
-- Output: validated JSON semantic blocks, semantic rich-format review, HTML clipboard flavor plus Unicode plain-text fallback.
+- Output: validated JSON semantic blocks, semantic rich-format preview plus side-by-side textual changes, HTML clipboard flavor plus Unicode plain-text fallback.
 - Target: capture records the foreground window handle and process ID; identity/focus are checked around simulated copy, and clipboard sequence is checked around capture read. Apply rechecks identity/focus before simulated paste. It does not verify Notion identity or detect selection/caret changes within the same window, and OS clipboard/input operations cannot be made atomic.
 - State: local settings only; no user-text history database, telemetry, or hosted services.
 - Automated engineering checks: offline protocol/settings tests, a Windows GitHub Actions build/test gate, and a separate opt-in synthetic local-model benchmark.
@@ -42,7 +42,7 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 
 - Should the default mode remain proofreading-only, or should the app remember the last selected mode?
 - How much of the previous clipboard can/should be restored, and how should lossy formats be disclosed?
-- What visual preview/diff best communicates color, quote, code, and table changes?
+- How should the preview communicate formatting-only changes, block moves, and structural changes beyond the current text comparison?
 - Should the helper refuse operation outside Notion, or remain a general selected-text editor?
 - Does the 7B model's improvement on synthetic checks generalize to representative writing, and is its measured GPU memory use acceptable during the user's normal workload?
 - Which Notion API workflows are actually needed, and what minimum integration/page permissions would they require?
@@ -54,7 +54,7 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 2. Broaden local model-quality evaluation beyond the three fixed synthetic benchmark cases; keep candidate/default changes evidence-based.
 3. Verify clipboard selection, restoration focus, and paste in the real Notion desktop client.
 4. Test CF_HTML offsets and HTML escaping with automated tests, including non-ASCII content.
-5. Add an accurate source/result diff and explicit clipboard failure handling; the semantic format preview and stale-window guard are implemented, but selection continuity remains unknown.
+5. Improve disclosure and failure handling for clipboard operations; the semantic preview, text comparison, and stale-window guard are implemented, but selection continuity remains unknown.
 6. Compare the baseline and a compatible larger local model with the synthetic benchmark; do not change the default without measured latency and quality evidence.
 7. Consider API-based page/database workflows only after the selected-text MVP is reliable and the user opts in.
 
@@ -64,7 +64,7 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 - Clipboard capture replaces whatever had been copied; arbitrary previous formats are not preserved.
 - The helper uses simulated copy/paste. Window/process, foreground, and clipboard-sequence checks reduce stale-target and clipboard-read races, but cannot verify the focused editor selection and may still target the wrong application.
 - The shortcut is global and configurable only among the supported presets; the app can currently operate on any foreground application.
-- The preview approximates supported semantics but is not WYSIWYG and does not show a character-level diff.
+- The formatted preview is not WYSIWYG. The text comparison is word/punctuation-token based, does not align moved blocks or show formatting-only changes, and uses a full replacement view for large edits.
 - The default 7B model may leave limited GPU memory for other workloads; the configurable 3B model is a lower-memory fallback. Model name is configurable, while the Ollama endpoint and timeout remain fixed; the app does not install Ollama or download weights automatically.
 - Model output may be valid but incorrect; schema validation cannot verify semantic correctness.
 - The synthetic model benchmark is a proxy, not a substitute for user-approved writing examples or real Notion behavior.

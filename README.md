@@ -27,10 +27,11 @@ The structure-aware mode can choose headings, bullets, numbered lists, quotes, c
 
 ## What works in this first implementation
 
-- A Windows WPF floating window, launched from the notification-area icon or `Ctrl+Shift+Space`.
+- A Windows WPF floating window, launched from the notification-area icon or a configurable global shortcut preset.
 - Capturing selected Unicode text in the foreground application using the Windows clipboard.
 - **Proofread only** and **Improve structure when useful** modes.
-- Local Ollama chat requests using the `qwen2.5:3b` model by default.
+- Local Ollama chat requests using `qwen2.5:7b` by default; the local model name is configurable.
+- Local settings for the model and `Ctrl+Shift+Space`, `Ctrl+Alt+Space`, or `Ctrl+Shift+N` shortcut presets.
 - A JSON response contract, validation of supported blocks/colors and table dimensions, and an editable review preview.
 - HTML clipboard output for paragraphs, headings, lists, quotes, code, colors, and tables, plus a Unicode plain-text fallback.
 - Explicit Apply and Close actions; closing the window hides it so the helper remains available in the tray.
@@ -41,7 +42,7 @@ The structure-aware mode can choose headings, bullets, numbered lists, quotes, c
 - Windows 10 or 11 (64-bit).
 - .NET 10 Desktop Runtime to run a framework-dependent build; the .NET 10 SDK to build from source.
 - [Ollama for Windows](https://ollama.com/download).
-- A locally downloaded model. The default is `qwen2.5:3b`.
+- A locally downloaded model. The default is `qwen2.5:7b` (about 4.7 GB at Q4_K_M); `qwen2.5:3b` is a lower-memory option.
 - Notion desktop app or another Windows app that accepts pasted text.
 
 The project targets `net10.0-windows` and uses WPF and WinForms components already included in the .NET Windows Desktop framework. The first version does not require NuGet packages.
@@ -53,7 +54,7 @@ The project targets `net10.0-windows` and uses WPF and WinForms components alrea
 Install Ollama from its official download page. In PowerShell, run:
 
 ```powershell
-ollama pull qwen2.5:3b
+ollama pull qwen2.5:7b
 ```
 
 Ollama normally starts its local server automatically after installation. Confirm that it is available:
@@ -72,21 +73,32 @@ dotnet build .\src\NotionHelper\NotionHelper.csproj -c Release
 dotnet run --project .\src\NotionHelper\NotionHelper.csproj
 ```
 
-The helper opens in the notification area. Right-click its icon to show or exit. In Notion, select text and press **Ctrl+Shift+Space**. The helper captures the selection, opens its preview window, and waits for you to choose a mode and click **Improve text**.
+The helper opens in the notification area. Right-click its icon to show or exit. In Notion, select text and press the configured shortcut (default **Ctrl+Shift+Space**). The helper captures the selection, opens its preview window, and waits for you to choose a mode and click **Improve text**.
 
-If the shortcut is already registered by another application, open the helper from the notification area. If Ollama is not installed or the model is missing, the helper reports the local setup step needed.
+If the shortcut is already registered by another application, open the helper from the notification area. Expand **Local settings** to choose an installed Ollama model or shortcut preset, then select **Save**. A shortcut conflict is reported and the prior registered shortcut is retained where possible. Settings are stored in `%LOCALAPPDATA%\NotionHelper\settings.json`; the file contains the model name and shortcut only, never selected writing. The Ollama endpoint is not configurable and remains loopback-only.
 
 ### 3. Review and apply
 
 Choose **Proofread only** to retain paragraph structure and correct mechanics. Choose **Improve structure when useful** to allow semantic blocks when they make the content clearer. Inspect the preview, then click **Apply to Notion** to paste it into the original selection. **Close** or the window's close button does not modify Notion.
 
-The helper uses the original text selection as the target. Keep Notion open and avoid moving the caret or changing the clipboard while the helper is preparing/applying an edit. Rich HTML clipboard support depends on the target editor; if formatting is not accepted, the clipboard includes plain text to allow a manual paste.
+The helper uses the original foreground window as the target, but does not verify that it is Notion. Keep the target app open and avoid moving the caret or changing the clipboard while the helper is preparing/applying an edit. Rich HTML clipboard support depends on the target editor; if formatting is not accepted, the clipboard includes plain text to allow a manual paste.
+
+### Optional local model benchmark
+
+To compare the configured default with the lower-memory model using the app's production prompts and validated response contract, first pull the candidate locally:
+
+```powershell
+ollama pull qwen2.5:3b
+dotnet run --project .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release -- qwen2.5:7b qwen2.5:3b
+```
+
+The benchmark uses three fixed synthetic examples (proofreading, useful structure, and avoiding decoration of ordinary prose), reports pass/check counts and response times, and does not print or save model outputs. It never downloads a model or changes the app's default. On the development laptop, one run scored 3/3 for the Q4_K_M 7B model and 1/3 for the Q4_K_M 3B model. The larger model used about 4.75 GB VRAM and left about 0.65 GB free on that machine while loaded; choose the 3B model if other GPU workloads need more memory. This small synthetic benchmark is not proof of correctness. Compare behavior on representative writing, RAM/VRAM use, licenses, and latency before changing settings. Measurements depend on machine load, Ollama version, and thermal/power state.
 
 ## Privacy and cost
 
 The model runs on your computer via Ollama. This project has no analytics, telemetry, sign-in, API key, or hosted inference integration. The default endpoint is hard-coded to loopback. The model must be downloaded once, and internet access may be required for updates; neither condition implies a per-use charge.
 
-The workflow temporarily uses the Windows clipboard to read the selected text and provide rich output. Copying a selection replaces the clipboard contents. This initial version **does not promise to preserve arbitrary previous clipboard formats** (such as images, files, or rich office content). Do not use it with text subject to a policy that prohibits copying it to the clipboard. The local model may also use system RAM and GPU memory while running.
+The workflow temporarily uses the Windows clipboard to read the selected text and provide rich output. Copying a selection replaces the clipboard contents. This initial version **does not promise to preserve arbitrary previous clipboard formats** (such as images, files, or rich office content). Do not use it with text subject to a policy that prohibits copying it to the clipboard. Local settings contain no writing or prompt history. The local model may also use system RAM and GPU memory while running.
 
 Ollama/model downloads have their own licenses and notices. Review the specific model's license and usage terms before using it; a zero-cost local workflow does not itself grant rights to model weights or generated output.
 
@@ -140,20 +152,28 @@ dotnet build .\src\NotionHelper\NotionHelper.csproj
 dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release
 ```
 
-The app project uses only Windows Desktop framework components. The test project uses xUnit to exercise clipboard serialization and plain-text fallback behavior. The app requires Windows for WPF and Win32 interop.
+The app project uses only Windows Desktop framework components. The xUnit suite exercises clipboard serialization, settings validation, and the Ollama request/response protocol using an in-memory fake handler; it does not require a model server, network access, Notion, or user text. The app requires Windows for WPF and Win32 interop.
+
+Build the optional benchmark CLI with:
+
+```powershell
+dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release
+```
+
+GitHub Actions runs the Windows app build, deterministic test suite, and benchmark build on pushes and pull requests. It does not download model weights or run nondeterministic inference.
 
 ### Contributing
 
-1. Read [`AGENTS.md`](AGENTS.md), [`agents/PRODUCT_DIRECTION.md`](agents/PRODUCT_DIRECTION.md), and the design document before changing user-visible behavior.
+1. Read [`AGENTS.md`](AGENTS.md), [`agents/QUICK_START.md`](agents/QUICK_START.md), [`agents/PRODUCT_DIRECTION.md`](agents/PRODUCT_DIRECTION.md), [`agents/KNOWN_ISSUES.md`](agents/KNOWN_ISSUES.md), and the design document before changing user-visible behavior.
 2. Keep editing opt-in and make errors visible.
 3. Update the design document whenever an architectural decision, data flow, requirement, privacy property, or known limitation changes.
-4. Run the focused build and any relevant tests.
+4. Run the focused build and deterministic tests. Use the optional model benchmark for local quality/latency observations; do not make it a CI test.
 5. Do not commit tokens, personal page contents, model files, build output, or local configuration.
 
 ## Roadmap
 
 1. **Selected-text MVP (current):** local proofreading, structure-aware formatting, preview, clipboard apply.
-2. **Reliable daily use:** validate capture/focus and rich-paste behavior across Notion app versions; handle clipboard contention and accessibility; configurable shortcut/model; package a signed or easily installable Windows release.
+2. **Reliable daily use:** validate capture/focus and rich-paste behavior across Notion app versions; handle clipboard contention and accessibility; improve the preview and selection safety; package a signed or easily installable Windows release. Model and shortcut configuration and deterministic protocol tests are implemented, but Notion integration remains unverified.
 3. **Writing assistance:** prompt box for drafting when no text is selected, reusable user-approved style preferences, and clearer output-diff presentation.
 4. **Optional page/database workflows:** investigate an explicitly enabled Notion API integration for creating pages, databases, and chart-ready data. Request only the access required and explain that Notion integration permissions and API capabilities differ from direct local clipboard pasting.
 

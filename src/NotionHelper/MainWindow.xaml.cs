@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -19,29 +20,45 @@ public partial class MainWindow : Window
 {
     private const int HotkeyId = 0x4E48;
     private const int WmHotkey = 0x0312;
-    private const uint ModControl = 0x0002;
-    private const uint ModShift = 0x0004;
-    private const uint VkSpace = 0x20;
 
-    private readonly OllamaClient _ollama = new();
+    private readonly AppSettingsStore _settingsStore = new();
+    private readonly string? _settingsLoadError;
     private readonly Forms.NotifyIcon _trayIcon;
+    private AppSettings _settings;
+    private OllamaClient _ollama;
     private HwndSource? _source;
     private nint _targetWindow;
     private ImprovementResult? _result;
     private bool _allowClose;
     private bool _hotkeyRegistered;
     private bool _isImproving;
+    private int _hotkeyId = HotkeyId;
+    private ShortcutPreset _activeShortcut;
 
     public MainWindow()
     {
+        try
+        {
+            _settings = _settingsStore.Load();
+        }
+        catch (Exception exception) when (
+            exception is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
+        {
+            _settings = new AppSettings();
+            _settingsLoadError = $"Could not load local settings: {exception.Message} Save valid settings to continue.";
+        }
+
+        _ollama = new OllamaClient(_settings.Model);
         InitializeComponent();
+        ModelNameInput.Text = _settings.Model;
+        ShortcutSelector.SelectedValue = _settings.Shortcut.ToString();
 
         _trayIcon = CreateTrayIcon();
         SourceInitialized += OnSourceInitialized;
         Closed += (_, _) => Cleanup();
     }
 
-    private static Forms.NotifyIcon CreateTrayIcon()
+    private Forms.NotifyIcon CreateTrayIcon()
     {
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open Notion Helper", null, (_, _) =>
@@ -66,7 +83,7 @@ public partial class MainWindow : Window
         var icon = new Forms.NotifyIcon
         {
             Icon = System.Drawing.SystemIcons.Application,
-            Text = "Notion Helper — Ctrl+Shift+Space",
+            Text = $"Notion Helper — {ShortcutPresets.GetBinding(_settings.Shortcut).DisplayName}",
             ContextMenuStrip = menu,
             Visible = true
         };
@@ -86,16 +103,21 @@ public partial class MainWindow : Window
         var handle = new WindowInteropHelper(this).Handle;
         _source = HwndSource.FromHwnd(handle);
         _source.AddHook(WindowMessageHook);
-        _hotkeyRegistered = NativeMethods.RegisterHotKey(handle, HotkeyId, ModControl | ModShift, VkSpace);
+        var binding = ShortcutPresets.GetBinding(_settings.Shortcut);
+        _hotkeyRegistered = NativeMethods.RegisterHotKey(handle, _hotkeyId, binding.Modifiers, binding.VirtualKey);
+        if (_hotkeyRegistered)
+        {
+            _activeShortcut = _settings.Shortcut;
+        }
 
-        StatusText.Text = _hotkeyRegistered
-            ? "Press Ctrl+Shift+Space with text selected in Notion."
-            : "The global shortcut is unavailable. Open the helper from its tray icon.";
+        StatusText.Text = _settingsLoadError ?? (_hotkeyRegistered
+            ? $"Press {binding.DisplayName} with text selected in Notion."
+            : $"The {binding.DisplayName} shortcut is unavailable. Open the helper from its tray icon.");
     }
 
     private nint WindowMessageHook(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     {
-        if (message == WmHotkey && wParam.ToInt32() == HotkeyId)
+        if (message == WmHotkey && wParam.ToInt32() == _hotkeyId)
         {
             handled = true;
             _ = CaptureSelectionAsync();
@@ -109,7 +131,7 @@ public partial class MainWindow : Window
         _targetWindow = NativeMethods.GetForegroundWindow();
         if (_targetWindow == IntPtr.Zero || _targetWindow == new WindowInteropHelper(this).Handle)
         {
-            StatusText.Text = "Select text in Notion first, then press Ctrl+Shift+Space.";
+            StatusText.Text = $"Select text first, then press {ShortcutPresets.GetBinding(_settings.Shortcut).DisplayName}.";
             ShowAndActivate();
             return;
         }
@@ -208,6 +230,111 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SaveSettingsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_isImproving)
+        {
+            StatusText.Text = "Wait for the current local model request to finish before changing settings.";
+            return;
+        }
+
+        if (ShortcutSelector.SelectedValue is not string shortcutName ||
+            !Enum.TryParse<ShortcutPreset>(shortcutName, out var shortcut))
+        {
+            StatusText.Text = "Choose one of the supported keyboard shortcuts.";
+            return;
+        }
+
+        var updatedSettings = new AppSettings
+        {
+            Model = ModelNameInput.Text.Trim(),
+            Shortcut = shortcut
+        };
+
+        try
+        {
+            AppSettingsStore.Validate(updatedSettings);
+        }
+        catch (InvalidDataException exception)
+        {
+            StatusText.Text = exception.Message;
+            return;
+        }
+
+        if (!TryChangeShortcut(updatedSettings.Shortcut))
+        {
+            return;
+        }
+
+        try
+        {
+            _settingsStore.Save(updatedSettings);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            var shortcutRestored = TryChangeShortcut(_settings.Shortcut);
+            StatusText.Text = $"Could not save local settings: {exception.Message}" +
+                (shortcutRestored ? string.Empty : $" {StatusText.Text}");
+            return;
+        }
+
+        _ollama.UpdateModel(updatedSettings.Model);
+        _settings = updatedSettings;
+        ModelNameInput.Text = updatedSettings.Model;
+        _trayIcon.Text = $"Notion Helper — {ShortcutPresets.GetBinding(shortcut).DisplayName}";
+        StatusText.Text = $"Settings saved locally. Model: {updatedSettings.Model}; shortcut: {ShortcutPresets.GetBinding(shortcut).DisplayName}. Inference remains local.";
+    }
+
+    private bool TryChangeShortcut(ShortcutPreset shortcut)
+    {
+        if (_source is null)
+        {
+            StatusText.Text = "The shortcut cannot be changed until the window is initialized.";
+            return false;
+        }
+
+        if (shortcut == _activeShortcut && _hotkeyRegistered)
+        {
+            return true;
+        }
+
+        var handle = new WindowInteropHelper(this).Handle;
+        var hadRegisteredShortcut = _hotkeyRegistered;
+        var previousShortcut = _activeShortcut;
+        if (_hotkeyRegistered)
+        {
+            if (!NativeMethods.UnregisterHotKey(handle, _hotkeyId))
+            {
+                var unregisterFailure = new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()).Message;
+                StatusText.Text = $"Could not release the current shortcut: {unregisterFailure}. Settings were not changed.";
+                return false;
+            }
+
+            _hotkeyRegistered = false;
+        }
+
+        var binding = ShortcutPresets.GetBinding(shortcut);
+        if (NativeMethods.RegisterHotKey(handle, _hotkeyId, binding.Modifiers, binding.VirtualKey))
+        {
+            _hotkeyRegistered = true;
+            _activeShortcut = shortcut;
+            return true;
+        }
+
+        var registrationFailure = new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()).Message;
+        var previous = ShortcutPresets.GetBinding(previousShortcut);
+        _hotkeyRegistered = hadRegisteredShortcut &&
+            NativeMethods.RegisterHotKey(handle, _hotkeyId, previous.Modifiers, previous.VirtualKey);
+        if (_hotkeyRegistered)
+        {
+            _activeShortcut = previousShortcut;
+        }
+
+        StatusText.Text = $"Could not register {binding.DisplayName}: {registrationFailure}. " +
+            (_hotkeyRegistered ? "The previous shortcut remains active." : "Use the tray icon to open the helper.");
+        return false;
+    }
+
     private async void ApplyButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_result is null || _targetWindow == IntPtr.Zero)
@@ -287,7 +414,7 @@ public partial class MainWindow : Window
         _source?.RemoveHook(WindowMessageHook);
         if (_hotkeyRegistered)
         {
-            NativeMethods.UnregisterHotKey(new WindowInteropHelper(this).Handle, HotkeyId);
+            NativeMethods.UnregisterHotKey(new WindowInteropHelper(this).Handle, _hotkeyId);
         }
         _ollama.Dispose();
     }

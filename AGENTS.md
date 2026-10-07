@@ -1,6 +1,6 @@
 # Repository guidance for coding agents
 
-Read [`agents/PRODUCT_DIRECTION.md`](agents/PRODUCT_DIRECTION.md) and [`docs/SOFTWARE_DESIGN.md`](docs/SOFTWARE_DESIGN.md) before changing product behavior.
+Read [`agents/PRODUCT_DIRECTION.md`](agents/PRODUCT_DIRECTION.md) and [`docs/SOFTWARE_DESIGN.md`](docs/SOFTWARE_DESIGN.md) before changing product behavior. For quick onboarding and current gaps, also read [`agents/QUICK_START.md`](agents/QUICK_START.md) and [`agents/KNOWN_ISSUES.md`](agents/KNOWN_ISSUES.md).
 
 ## Mandatory product constraints
 
@@ -14,6 +14,12 @@ Read [`agents/PRODUCT_DIRECTION.md`](agents/PRODUCT_DIRECTION.md) and [`docs/SOF
 
 ## Engineering workflow
 
+- Verify current files, API signatures, and machine/runtime state in this session; do not rely on stale notes as proof.
+- Keep dependencies flowing from WPF presentation to application/services to models; model code must not depend on WPF or Win32.
+- Dispose native handles, event hooks, tray icons, and HTTP clients with their owning window/service lifecycle.
+- Run `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release` alongside the documented app build.
+- Build `.\tools\ModelBenchmark\ModelBenchmark.csproj` when changing the opt-in benchmark. Unit tests must not require Ollama, network access, Notion, or personal writing; use fake HTTP handlers and synthetic fixtures.
+- Report exact validation commands and results. Treat local model benchmarks as measurements, not deterministic CI gates.
 - Preserve the existing .NET/WPF/WinForms/Win32 architecture unless a documented decision changes.
 - Keep changes focused and avoid unnecessary packages. The app targets `net10.0-windows` and uses framework components.
 - Build with `dotnet build .\src\NotionHelper\NotionHelper.csproj -c Release` on Windows.
@@ -22,3 +28,10 @@ Read [`agents/PRODUCT_DIRECTION.md`](agents/PRODUCT_DIRECTION.md) and [`docs/SOF
 - Do not claim Notion rich-paste support is verified unless the manual end-to-end Notion validation was actually performed and recorded.
 - Do not modify the AI behavior solely to produce more formatting. Preserve meaning and prefer the least surprising edit.
 - Keep native input, clipboard, and foreground-window operations narrowly scoped and explain user-visible errors.
+
+## AI-development environment
+
+- Treat [`agents/QUICK_START.md`](agents/QUICK_START.md), this file, and the living design document as the compact onboarding contract.
+- Use the Windows GitHub Actions workflow as the shared build/test gate; run the same relevant commands locally before publishing.
+- Prefer compiler, type, and test evidence over generated regex-based symbol indexes. Do not add broad indexing, logging, telemetry, generic pre-commit hooks, or abstraction layers without a demonstrated project need.
+- Keep benchmark inputs synthetic and fixed. Use the production Ollama client and loopback endpoint, do not save model output, and never change the app's default model automatically.

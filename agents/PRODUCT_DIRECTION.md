@@ -31,11 +31,12 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 - Platform: Windows desktop application using .NET 10 WPF, WinForms `NotifyIcon`, and Win32 hotkey/input/foreground-window APIs.
 - Entry: `Ctrl+Shift+Space` with a selection, plus notification-area menu.
 - Model runtime: Ollama HTTP API at `http://127.0.0.1:11434`.
-- Default candidate: `qwen2.5:3b`; benchmark before increasing model size.
+- Default model: `qwen2.5:7b` Q4_K_M, promoted after a 3/3 synthetic benchmark result versus 1/3 for `qwen2.5:3b`; the 3B model remains available as a lower-VRAM fallback. Model name and shortcut preset are stored in local settings.
 - Modes: proofreading-only and optional structure-aware formatting.
 - Output: validated JSON semantic blocks, textual review, HTML clipboard flavor plus Unicode plain-text fallback.
 - Target: the foreground window from capture time; no Notion-specific identity check yet.
-- State: no user-text history database and no hosted services.
+- State: local settings only; no user-text history database, telemetry, or hosted services.
+- Automated engineering checks: offline protocol/settings tests, a Windows GitHub Actions build/test gate, and a separate opt-in synthetic local-model benchmark.
 
 ## Open product questions (do not make irreversible choices silently)
 
@@ -43,18 +44,18 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 - How much of the previous clipboard can/should be restored, and how should lossy formats be disclosed?
 - What visual preview/diff best communicates color, quote, code, and table changes?
 - Should the helper refuse operation outside Notion, or remain a general selected-text editor?
-- Which model gives the best speed/quality trade-off on real user-approved examples?
+- Does the 7B model's improvement on synthetic checks generalize to representative writing, and is its measured GPU memory use acceptable during the user's normal workload?
 - Which Notion API workflows are actually needed, and what minimum integration/page permissions would they require?
 - Is Windows the intended long-term platform, or should the UI eventually move to a cross-platform shell?
 
 ## Near-term priorities
 
 1. Build cleanly and validate startup/exit/tray/hotkey behavior on Windows.
-2. Install Ollama, download the small default model, and exercise both model prompts locally.
+2. Broaden local model-quality evaluation beyond the three fixed synthetic benchmark cases; keep candidate/default changes evidence-based.
 3. Verify clipboard selection, restoration focus, and paste in the real Notion desktop client.
 4. Test CF_HTML offsets and HTML escaping with automated tests, including non-ASCII content.
 5. Add an accurate diff/format preview and explicit selection/clipboard failure handling.
-6. Compare a larger local model only after the baseline is measurable.
+6. Compare the baseline and a compatible larger local model with the synthetic benchmark; do not change the default without measured latency and quality evidence.
 7. Consider API-based page/database workflows only after the selected-text MVP is reliable and the user opts in.
 
 ## Current known limitations
@@ -62,10 +63,11 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 - No verified end-to-end Notion paste test yet; CSS colors and semantic block conversion may be normalized or discarded.
 - Clipboard capture replaces whatever had been copied; arbitrary previous formats are not preserved.
 - The helper uses simulated copy/paste and can lose focus or target the wrong app.
-- The shortcut is global and not configurable; the app can currently operate on any foreground application.
+- The shortcut is global and configurable only among the supported presets; the app can currently operate on any foreground application.
 - The preview is plain text, not WYSIWYG or a character-level diff.
-- The model, Ollama endpoint, and timeout are constants; the app does not install Ollama or download weights automatically.
+- The default 7B model may leave limited GPU memory for other workloads; the configurable 3B model is a lower-memory fallback. Model name is configurable, while the Ollama endpoint and timeout remain fixed; the app does not install Ollama or download weights automatically.
 - Model output may be valid but incorrect; schema validation cannot verify semantic correctness.
+- The synthetic model benchmark is a proxy, not a substitute for user-approved writing examples or real Notion behavior.
 - No Notion API, database builder, chart rendering, browser extension, undo/history, or non-Windows build.
 
 ## Maintenance rule

@@ -1,6 +1,6 @@
 # Notion Helper — Software Design Document
 
-**Status:** Living document; describes the first Windows MVP and its current implementation
+**Status:** Living document; describes the Windows MVP and reliability/configuration phase
 **Last reviewed:** 2026-10-07
 **Owners:** Project contributors
 **Repository:** `MahmoudMamdouh3/notion-helper`
@@ -11,7 +11,7 @@ This document is the source of truth for product intent and software architectur
 
 Notion Helper is a Windows desktop companion that lets a user select text in Notion, invoke a lightweight editor using a global shortcut, obtain a local-language-model suggestion, inspect the result, and explicitly paste it back into the original selection. It aims to make spelling and grammar repair quick while also helping transform rough notes into clearer Notion-compatible content.
 
-The first implementation uses .NET WPF for the user interface, Win32 interop for a global shortcut and keyboard/foreground-window operations, the Windows clipboard for selected-text capture and rich-text application, and Ollama's local HTTP API for inference. The local `qwen2.5:3b` model is the initial default. No Notion API token, cloud inference provider, application account, or recurring service is required.
+The first implementation uses .NET WPF for the user interface, Win32 interop for a global shortcut and keyboard/foreground-window operations, the Windows clipboard for selected-text capture and rich-text application, and Ollama's local HTTP API for inference. The current default is `qwen2.5:7b` (Q4_K_M); `qwen2.5:3b` remains a lower-memory setting. No Notion API token, cloud inference provider, application account, or recurring service is required.
 
 The product is deliberately conservative: proofreading preserves the original structure; structure-aware editing may propose formatting, but only when the text benefits from it. The user sees a preview and must click Apply. The helper does not silently edit the page or crawl workspace content.
 
@@ -125,8 +125,8 @@ The initial development machine is a Lenovo Windows 11 laptop with a 13th-genera
 
 Implications:
 
-- A small quantized model should be practical; the first candidate, `qwen2.5:3b`, is chosen to favor responsiveness and fit over maximal reasoning ability.
-- A 7B-class model may improve structure/rewrite quality but is more likely to compete with other GPU workloads within 8 GB VRAM. It should be benchmarked rather than presumed better.
+- Quantized `qwen2.5:7b` was measured at about 4.75 GB VRAM allocation; while it was loaded in this environment, the GPU showed about 0.65 GB free. It performed better on the small synthetic rubric than `qwen2.5:3b`, but may compete with GPU-heavy applications.
+- `qwen2.5:3b` was measured at about 2.16 GB VRAM allocation and left about 3.2 GB free on the same machine. It is available in settings as a lower-memory fallback, but scored worse on the synthetic proofreading/structure checks.
 - Model quantization, context length, GPU offload, concurrency, laptop cooling/power mode, free VRAM, and prompt size affect actual speed and quality.
 - No WSL/Docker dependency is justified for a native WPF app.
 - These facts describe one developer machine, not a universal system requirement.
@@ -165,13 +165,19 @@ src/NotionHelper/
   App.xaml(.cs)                         Application lifetime
   MainWindow.xaml(.cs)                  Window, tray menu, hotkey, workflow
   Models/ImprovementResult.cs           Validated block contract/plain fallback
+  Models/AppSettings.cs                 Local settings model and shortcut presets
   Services/OllamaClient.cs              Local request, prompt, parsing, validation
+  Services/AppSettingsStore.cs          LocalAppData settings persistence/validation
   Services/ImprovementResultValidator.cs Allow-listed block/color/table validation
   Services/HtmlClipboardFormatter.cs    Safe HTML and CF_HTML clipboard payload
   Interop/NativeMethods.cs              Win32 hotkey/window/input declarations
   Interop/KeyboardInput.cs              Copy/paste keyboard chord
   Properties/AssemblyInfo.cs            Test-only internals visibility
-tests/NotionHelper.Tests/                Clipboard serialization regression tests
+tests/NotionHelper.Tests/                Clipboard, settings, and local-protocol tests
+tools/ModelBenchmark/                    Optional synthetic local-model benchmark CLI
+agents/QUICK_START.md                    Compact agent/contributor onboarding map
+agents/KNOWN_ISSUES.md                   Evidence-based current issue ledger
+.github/workflows/windows-ci.yml          Windows build/test/benchmark-build gate
 docs/SOFTWARE_DESIGN.md                 Living architecture and decision record
 agents/                                 Product direction and contributor guidance
 ```
@@ -180,7 +186,9 @@ agents/                                 Product direction and contributor guidan
 
 - **Application lifetime:** starts the window hidden, sets explicit shutdown, and leaves an exit path in the tray menu.
 - **MainWindow:** registers `Ctrl+Shift+Space`, remembers the foreground window, performs the UI state transitions, and gates Apply on a valid response and known target.
-- **OllamaClient:** posts a non-streaming JSON-mode chat request to the fixed local endpoint; gives proofread and structure-aware requests different constraints; parses JSON and rejects unsupported or malformed structures.
+- **OllamaClient:** posts a non-streaming JSON-mode chat request to the fixed local endpoint using the configured model; gives proofread and structure-aware requests different constraints; parses JSON and rejects unsupported or malformed structures.
+- **AppSettingsStore:** loads and validates only the model name and a supported shortcut preset in `%LOCALAPPDATA%\NotionHelper\settings.json`; it never stores source text, prompts, or model output.
+- **ModelBenchmark:** runs fixed synthetic cases through the same `OllamaClient`, reports per-case quality checks and elapsed time, and does not persist generated content or change the application default.
 - **ImprovementResult/ContentBlock:** represents only the semantic subset the app knows how to preview and paste; supports plain text fallback.
 - **HtmlClipboardFormatter:** HTML-encodes all model/user text, renders allow-listed semantic blocks and color values, and constructs Windows CF_HTML byte offsets.
 - **NativeMethods/KeyboardInput:** isolate the small set of Win32 operations required for hotkey registration and simulating copy/paste.
@@ -188,7 +196,7 @@ agents/                                 Product direction and contributor guidan
 
 ### 6.4 Request/response contract
 
-The chat request has `model`, `stream:false`, `format:"json"`, and role/content messages. The system message directs the model to return:
+The chat request has `model`, `stream:false`, `format:"json"`, role/content messages, and `options.temperature:0.2` to reduce sampling variance. The system message directs the model to return:
 
 ```json
 {
@@ -244,9 +252,9 @@ The output is intentionally simple HTML and standard tags, not an undocumented N
 
 **Trade-offs:** the user must install software and download model weights; inference consumes local GPU/RAM and may be slower or lower quality than a hosted large model; model licenses vary; output quality is not guaranteed. A remote service could be faster or stronger but conflicts with privacy and zero recurring cost.
 
-### ADR-4: Small default model first (accepted, benchmark pending)
+### ADR-4: Small default model first (superseded by ADR-8)
 
-**Decision:** begin with `qwen2.5:3b`, not a large model.
+**Historical decision:** begin with `qwen2.5:3b`, not a large model.
 
 **Why:** the available RTX 4060 Laptop GPU has 8 GB VRAM, but the machine has other workloads and only about 5.3 GB free at inspection. A 3B-class quantized model is a more conservative latency and memory starting point for corrections and formatting decisions.
 
@@ -268,16 +276,34 @@ The output is intentionally simple HTML and standard tags, not an undocumented N
 
 **Trade-off:** one additional click. An auto-apply toggle is not part of the initial scope; any future proposal must revisit safety and explicit opt-in.
 
+### ADR-7: Local model and shortcut settings, fixed inference endpoint (accepted)
+
+**Decision:** persist an Ollama model name and a choice among three shortcut presets in a small settings file under the current user's LocalAppData. Keep the endpoint fixed at `127.0.0.1:11434`, validate all settings, and display load/save/registration errors.
+
+**Why:** users can select a model they have already installed and avoid system-wide shortcut conflicts without requiring a cloud endpoint, secrets, new packages, or a model-download flow. The settings contain no writing or model outputs.
+
+**Alternatives:** environment variables and command-line flags are harder for a desktop user to discover; arbitrary URLs would weaken the explicit local-only contract and need more security/UX design; an unrestricted key-capture editor is more flexible but adds focus, modifier, and conflict edge cases. Presets keep registration and testing bounded.
+
+**Trade-offs:** settings are per-user and not synchronized/backed up. Only the listed shortcut combinations are supported; model availability is detected by Ollama when a request is made. A malformed settings file is surfaced for user correction, and the app continues with the local default until settings are saved.
+
+### ADR-8: Promote the measured 7B model while retaining a low-memory fallback (accepted)
+
+**Decision:** use `qwen2.5:7b` (Q4_K_M) as the new default and retain `qwen2.5:3b` as an explicitly selectable fallback.
+
+**Evidence:** on this Windows machine with Ollama 0.35.1, the fixed three-case synthetic benchmark scored 3/3 for 7B and 1/3 for 3B using the same client, prompts, JSON validation, and temperature 0.2. This includes spelling correction, useful structure for labeled notes, and avoiding unnecessary formatting of normal prose.
+
+**Trade-off:** 7B is approximately 4.75 GB on disk and allocated about 4.75 GB of VRAM. With it loaded, `nvidia-smi` reported 7.29 GB of 8.19 GB used (about 0.65 GB free) on the observed system; with 3B loaded, it reported 4.74 GB used (about 3.2 GB free). The 7B model better fits the writing-quality objective, but users running GPU-heavy applications may need to select 3B or unload the model. A three-case synthetic result is not a general quality guarantee.
+
 ## 8. Data flow and privacy
 
 1. The user initiates capture in the foreground app. The helper sends `Ctrl+C`; Notion/browser/app behavior determines what enters the Windows clipboard.
 2. The helper reads Unicode text from the clipboard. The target text is also placed into the source preview.
-3. On Improve text, the app sends the selection, mode prompt, and default model name to `http://127.0.0.1:11434/api/chat`.
+3. On Improve text, the app sends the selection, mode prompt, and locally configured Ollama model name to `http://127.0.0.1:11434/api/chat`.
 4. Ollama loads the local model and returns JSON. The app parses and validates it.
 5. The user inspects the result and explicitly applies it.
 6. The helper writes a rich HTML clipboard payload plus plain-text fallback and simulates `Ctrl+V` into the remembered foreground window.
 
-There is no configured remote endpoint, telemetry, persistence/database, logging of user text, or app-side storage of selections. The content nevertheless exists temporarily in the clipboard, the app's process memory, and Ollama's process memory/context. A local Ollama install may have its own operational behavior; this app's request uses a loopback address, but users should review their local model/runtime configuration and firewall/host settings. This repository does not prove that every possible machine configuration is network-isolated.
+There is no configurable remote endpoint, telemetry, edit database, logging of user text, or app-side storage of selections. The only persisted app settings are the local model name and shortcut preset under `%LOCALAPPDATA%\NotionHelper`; model output and selection text are not written to that file. Content exists temporarily in the clipboard, the app's process memory, and Ollama's process memory/context. A local Ollama install may have its own operational behavior; this app's request uses a loopback address and bypasses configured HTTP proxies, but users should review their local model/runtime and firewall settings. This repository does not prove that every possible machine configuration is network-isolated.
 
 The helper cannot distinguish Notion from another foreground app in the current MVP. The user can invoke the global hotkey elsewhere; only invoke it where replacing the current selection is intended. A future safety improvement could detect the process/window and require confirmation for other applications.
 
@@ -291,7 +317,7 @@ The helper cannot distinguish Notion from another foreground app in the current 
 - **Prompt injection in selected content:** treat the selected content as data, not instructions. The system prompt should explicitly state this; add adversarial tests before claiming robust resistance. A local model can still follow malicious or confusing text.
 - **Model output correctness:** a valid JSON object can still be wrong, offensive, misleading, or a meaning-changing edit. Keep preview and user confirmation mandatory.
 - **Generated code:** code blocks should only be formatting for user-supplied code/commands; never execute generated or selected code.
-- **Hotkey handling:** a global hotkey is observable system-wide while the app is running. Provide an obvious exit and later configurable shortcut.
+- **Hotkey handling:** a global hotkey is observable system-wide while the app is running. Provide an obvious exit and allow choosing only the supported preset combinations.
 - **No secrets:** this app should not require API keys. Ignore local configuration and do not commit personal writing/model files.
 
 This section is a design threat analysis, not a formal security audit or a claim that all risks are eliminated.
@@ -313,7 +339,7 @@ Error paths must not log selection text by default.
 ## 11. Resource and performance expectations
 
 - Text is submitted only after Improve text is clicked.
-- The default 3B model is a size/latency compromise, not a measured performance guarantee.
+- The default 7B model performed better on a three-case synthetic benchmark, but this is not a general quality guarantee. Its VRAM use may compete with GPU-heavy applications; the 3B alternative uses less memory but performed worse in that benchmark.
 - GPU use depends on Ollama's model placement and free memory; CPU inference remains possible but slower.
 - Long selections can increase context use and latency. The current application does not impose an explicit character limit before sending; add one with a clear user-facing explanation if tests show reliability or memory problems.
 - Model downloads are separate from runtime and can be multiple gigabytes; the application does not automatically download weights or trigger unexpected network transfers.
@@ -338,20 +364,23 @@ The initial delivery is source code and a framework-dependent executable. A self
 
 ### Configuration
 
-The default model (`qwen2.5:3b`) and Ollama loopback URL are currently constants. Exposing these settings should include validation, visible locality/privacy guarantees, actionable model-missing errors, and tests. Do not silently discover or send to remote services.
+The model name defaults to `qwen2.5:7b` and can be changed in the collapsed **Local settings** expander (including selecting `qwen2.5:3b` for lower GPU use). The global shortcut can be selected from `Ctrl+Shift+Space`, `Ctrl+Alt+Space`, and `Ctrl+Shift+N`. Both values are persisted in `%LOCALAPPDATA%\NotionHelper\settings.json`; selection text, prompts, and generated content are never settings. Model names are validated, enum values are explicit, and malformed settings are reported in the UI instead of silently accepted. Ollama's HTTP endpoint and two-minute timeout remain fixed; requests use the production client's loopback address, bypass system proxies, and specify temperature `0.2` to reduce sampling variance. The app never discovers remote model hosts or downloads models. A missing configured model reports the exact `ollama pull <model>` command.
 
 ## 13. Testing strategy
 
 ### Automated tests
 
-Current focused tests cover HTML encoding, grouping consecutive numbered-list items, UTF-8 CF_HTML offsets with non-ASCII content, tab-separated table fallback, proofread-mode formatting restrictions, and rectangular table validation. Run them with the command above.
+The xUnit suite covers HTML encoding, grouping consecutive numbered-list items, UTF-8 CF_HTML offsets with non-ASCII content, tab-separated table fallback, proofread-mode formatting restrictions, rectangular table validation, local settings round-trip and validation, supported shortcut mappings, and Ollama request/response behavior through an in-memory fake HTTP handler. These tests do not require Ollama, a network connection, Notion, or real user writing.
+
+The Windows GitHub Actions workflow builds the WPF app, runs the deterministic test suite, and builds the benchmark CLI on pushes and pull requests. It deliberately does not download model weights or run nondeterministic inference.
+
+Run the optional benchmark with `dotnet run --project .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release -- <model> [<model> ...]`. It uses three hard-coded synthetic cases and the exact app client/prompt/validator path. It reports response time and pass/check status only, never prints or persists model outputs, and must not be used to automatically select a default. Measurements are machine/runtime dependent; quality checks are deliberately small indicators, not proof of semantic correctness.
 
 Remaining high-value automated tests:
 
-1. **Block contract validation:** allowed types/colors, proofread-only restrictions, empty content, block limits, and table bounds/rectangularity.
-2. **Ollama protocol:** mock local HTTP responses for success, non-success, missing model, malformed JSON, timeout, and empty content. Avoid tests that contact remote endpoints.
-3. **Prompt constraints:** ensure proofread and structure modes present their distinct requirements and selected content is framed as untrusted data.
-4. **UI state transitions:** capture, empty selection, valid result, invalid response, apply disabled before a response, close without replacement, and explicit apply only.
+1. **UI state transitions:** capture, empty selection, valid result, invalid response, Apply disabled before a response, close without replacement, and explicit Apply only.
+2. **Clipboard/native workflow:** use an isolated local editor fixture if it can be run without altering a user's clipboard or page; never mutate a real Notion workspace as an unattended test.
+3. **Model quality:** extend synthetic benchmark cases only when they represent a stable measurable requirement; keep real user text out of tests and CI.
 
 ### Manual end-to-end matrix
 
@@ -388,9 +417,12 @@ Compilation alone does not verify these integration behaviors. Test against the 
 - Validate the shortcut, focus and clipboard flow across Notion updates.
 - Preserve clipboard contents to the extent Windows clipboard APIs allow; clearly disclose lossy formats and contention.
 - Add a visible diff or side-by-side preview.
-- Add model and keyboard-shortcut settings with safe validation.
-- Add automatic tests for response validation and CF_HTML offsets.
+- Add model and keyboard-shortcut settings with safe validation. (Implemented: model name and three supported shortcut presets are saved locally.)
+- Add automatic tests for response validation and CF_HTML offsets. (Implemented: focused serializer, settings, prompt, and loopback protocol tests.)
+- Add Windows CI for build, deterministic tests, and benchmark-tool compilation. (Implemented; live inference is intentionally not part of CI.)
+- Add a repeatable synthetic model benchmark using the same production prompts and validated response contract. (Implemented; candidate comparison remains to be run and recorded.)
 - Package an installer and evaluate signing/update options.
+- Verify target focus, selection, clipboard, and paste behavior safely; actual Notion rich paste remains unverified.
 
 **Decision gate:** choose between native clipboard continuation, browser extension, or official API based on failures reported by users rather than assumptions.
 
@@ -421,7 +453,7 @@ Known limitations:
 5. **App-agnostic shortcut.** It can capture selected text from any application and attempt to paste back there; it does not currently prove the target is Notion.
 6. **Model quality is variable.** A 3B model may follow the JSON schema imperfectly or miss nuanced corrections/formatting. Structural validation is not semantic verification.
 7. **No formatting diff, undo, or built-in rollback.** Notion's own undo may recover a paste, but this must be checked manually.
-8. **Fixed configuration.** Endpoint, model, and shortcut are constants; there is no settings UI, model download management, or auto-update.
+8. **Partially configurable.** The model name and three global-hotkey presets are locally configurable. The Ollama endpoint and timeout remain fixed; there is no model download management or auto-update.
 9. **Windows-only.** WPF, WinForms notification icon, and Win32 input/shortcut calls prevent direct macOS/Linux use.
 10. **No Notion API, chart renderer, or database builder.** Rich tables may paste; charts and managed databases are later, separate workflows.
 11. **No persistence of edits or prompt history.** This protects privacy but also means no built-in history or recovery.
@@ -447,6 +479,8 @@ Validation sequence:
 | 2026-10-07 | Separate conservative proofreading from optional structure-aware formatting | Avoids unrequested restructuring/color while enabling richer output when it helps |
 | 2026-10-07 | Use a validated semantic JSON contract and standard HTML clipboard output | Avoids passing through arbitrary model-authored HTML and supports rich paste plus plain-text fallback |
 | 2026-10-07 | Require a preview and explicit Apply | Prevents silent destructive rewrites and keeps the user in control |
+| 2026-10-07 | Persist model/shortcut preferences locally while pinning Ollama to loopback | Adds user control without widening inference to remote services or persisting writing |
+| 2026-10-07 | Promote qwen2.5:7b Q4_K_M after a 3/3 vs 1/3 synthetic comparison | Improves measured writing/structure quality; keeps qwen2.5:3b selectable due to its lower VRAM use |
 
 Add entries when decisions change; do not erase superseded decisions without preserving their history and rationale.
 
@@ -456,8 +490,21 @@ Add entries when decisions change; do not erase superseded decisions without pre
 
 - Release build of `src/NotionHelper/NotionHelper.csproj`: passed with zero warnings and zero errors.
 - Focused tests: 8 passed, covering HTML encoding, ordered-list grouping, Unicode CF_HTML offsets, table fallback, proofread-mode restrictions, table validation, null model output, and the Win32 `INPUT` structure size.
-- Ollama 0.35.1 recognizes the downloaded `qwen2.5:3b` model and completes loopback inference with 100% GPU placement; the reported loaded model allocation was about 2.2 GB. Ollama 0.40.0 on this machine fails to open its generated `manifests-v2` model-tag symbolic link with `The path cannot be traversed because it contains an untrusted mount point`, so the documented setup should use the verified 0.35.1 release until this compatibility issue is resolved.
-- Quality check on `qwen2.5:3b` was mixed: a short spelling/grammar example was corrected in roughly 0.8 seconds, but the full proofreading prompt left obvious errors and the structure prompt did not format rough notes as intended. A Qwen3 4B candidate is being evaluated before the default model is finalized.
+- Ollama 0.35.1 recognizes the downloaded `qwen2.5:3b` model and completes loopback inference with 100% GPU placement; the reported loaded model allocation was about 2.2 GB. Ollama 0.40.0 on this machine failed to open its generated `manifests-v2` model-tag symbolic link with `The path cannot be traversed because it contains an untrusted mount point`. This was observed on one machine and is not a general compatibility conclusion; the README links to Ollama's official installer, and users should validate their installed runtime.
+- Historical quality check on `qwen2.5:3b` was mixed. Its initial prompt example also incorrectly showed `rows` on a paragraph; a later automated benchmark exposed and the prompt was fixed. The earlier Qwen3 4B evaluation was not performed under the installed 0.35.1 runtime.
 - The manual selection/focus/rich-paste flow has not yet been validated inside the Notion desktop app.
+
+**Next phase implementation verification (2026-10-07)**
+
+- `dotnet build .\src\NotionHelper\NotionHelper.csproj -c Release`: passed with 0 warnings and 0 errors.
+- `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release --logger "console;verbosity=normal"`: passed, 29/29 tests; reported test duration 0.5826 seconds.
+- `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release --no-restore`: passed with 0 warnings and 0 errors.
+- Added Windows GitHub Actions for the app build, deterministic tests, and benchmark CLI build. Live Ollama inference is not run in CI.
+- Ollama 0.35.1 locally listed both `qwen2.5:3b` (Q4_K_M, 1.9 GB on disk) and `qwen2.5:7b` (Q4_K_M, 4.7 GB on disk). The 7B model was fully GPU placed at 4,748,056,984 bytes; while loaded, `nvidia-smi` reported 7,291 MiB used of 8,188 MiB (666 MiB free). The 3B model was fully GPU placed at 2,159,374,499 bytes; while loaded, 4,742 MiB was used (3,215 MiB free).
+- With the final prompt, separate table shape, and temperature 0.2, a single synthetic run scored **qwen2.5:7b 3/3** (proofreading, labeled-note structure, no unnecessary prose decoration; mean 2,854 ms including model-load time) and **qwen2.5:3b 1/3** (missed all three checked spelling corrections and did not structure labeled notes; mean 1,606 ms). Neither changed ordinary-prose formatting. This is a tiny synthetic sample, not representative-quality certification; 7B became the default, with 3B retained for lower VRAM use.
+- Model output contract failure found by the benchmark was traced to the generic JSON example showing a `rows` property on a paragraph. The prompt now shows distinct paragraph/table examples and explicitly forbids `rows` on non-table blocks. This made both models produce schema-valid responses in the final observed runs.
+- WPF startup smoke test: the Release app remained running for three seconds in tray mode, then the exact smoke-test process was stopped. It did not use the clipboard, Ollama, or Notion page content.
+- The Ollama model was stopped after benchmarking; the downloaded model files remain available locally.
+- No actual Notion page, clipboard, or user writing was used by the automated model benchmark. Notion selection/focus/rich-paste behavior remains unverified.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.

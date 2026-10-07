@@ -11,6 +11,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -22,7 +23,39 @@
             <TextBlock Text="Local writing and formatting assistant" Foreground="#666A63" Margin="0,3,0,0"/>
         </StackPanel>
 
-        <Grid Grid.Row="1" Margin="0,0,0,12">
+        <Expander x:Name="SettingsExpander" Grid.Row="1" Header="Local settings"
+                  Margin="0,0,0,12">
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Ollama model" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <TextBox x:Name="ModelNameInput" Grid.Column="1" Grid.ColumnSpan="2"
+                         Height="30" Padding="7,4" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="1" Text="Shortcut" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                <ComboBox x:Name="ShortcutSelector" Grid.Row="1" Grid.Column="1" SelectedValuePath="Tag"
+                          Height="30" Margin="0,0,8,8">
+                    <ComboBoxItem Content="Ctrl+Shift+Space" Tag="ControlShiftSpace"/>
+                    <ComboBoxItem Content="Ctrl+Alt+Space" Tag="ControlAltSpace"/>
+                    <ComboBoxItem Content="Ctrl+Shift+N" Tag="ControlShiftN"/>
+                </ComboBox>
+                <Button x:Name="SaveSettingsButton" Grid.Row="1" Grid.Column="2"
+                        Content="Save" Padding="12,5" Margin="0,0,0,8"
+                        Click="SaveSettingsButton_OnClick"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                           Text="Settings are stored locally. Inference remains on 127.0.0.1; no text is saved."
+                           Foreground="#666A63" FontSize="12" TextWrapping="Wrap"/>
+            </Grid>
+        </Expander>
+
+        <Grid Grid.Row="2" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -35,7 +68,7 @@
             </ComboBox>
         </Grid>
 
-        <Grid Grid.Row="2" Margin="0,0,0,14">
+        <Grid Grid.Row="3" Margin="0,0,0,14">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -46,7 +79,7 @@
                      Padding="12" Background="White" BorderBrush="#E1E2DE"/>
         </Grid>
 
-        <Grid Grid.Row="3" Margin="0,0,0,14">
+        <Grid Grid.Row="4" Margin="0,0,0,14">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -58,7 +91,7 @@
                     BorderThickness="0" Click="ImproveButton_OnClick"/>
         </Grid>
 
-        <Grid Grid.Row="4" Margin="0,0,0,14">
+        <Grid Grid.Row="5" Margin="0,0,0,14">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -69,7 +102,7 @@
                      Padding="12" Background="White" BorderBrush="#E1E2DE"/>
         </Grid>
 
-        <Grid Grid.Row="5">
+        <Grid Grid.Row="6">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>

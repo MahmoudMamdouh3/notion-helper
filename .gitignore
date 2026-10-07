@@ -8,5 +8,5 @@
 .vscode/
 *.log
 *.ollama
-ollama-models/
-models/
+/ollama-models/
+/models/

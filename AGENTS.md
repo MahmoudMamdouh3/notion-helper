@@ -15,6 +15,7 @@ Read [`agents/PRODUCT_DIRECTION.md`](agents/PRODUCT_DIRECTION.md) and [`docs/SOF
 ## Engineering workflow
 
 - Verify current files, API signatures, and machine/runtime state in this session; do not rely on stale notes as proof.
+- After adding a source file, verify it appears in `git status`; use `git check-ignore -v <path>` if it does not. Keep model-weight ignore rules anchored to the repository root so they cannot hide source folders such as `Models/` on Windows.
 - Keep dependencies flowing from WPF presentation to application/services to models; model code must not depend on WPF or Win32.
 - Dispose native handles, event hooks, tray icons, and HTTP clients with their owning window/service lifecycle.
 - Run `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release` alongside the documented app build.

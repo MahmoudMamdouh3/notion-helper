@@ -536,6 +536,7 @@ Add entries when decisions change; do not erase superseded decisions without pre
 - `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release`: passed, 50/50 tests, including text/punctuation replacement, Unicode text elements, line-break preservation, coarse fallback at the work budget, and WPF original/proposed rendering.
 - `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
 - The Release app remained running for four seconds during startup smoke testing and was then stopped by its exact process ID. No clipboard or Notion interaction was performed.
+- Hosted Windows GitHub Actions run `37667012144` passed for commit `775e5b6`; application build, deterministic tests, and benchmark build all succeeded.
 - The text comparison uses synthetic examples only. Real Notion rendering, selection continuity, and formatting-only comparison remain unverified.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.

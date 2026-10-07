@@ -524,7 +524,7 @@ Add entries when decisions change; do not erase superseded decisions without pre
 - `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
 - Startup smoke test: the Release app process remained running for four seconds and was then stopped by its exact process ID. This did not interact with the clipboard or Notion.
 - The selection-capture tests verify target/focus changes block the corresponding clipboard read, unchanged clipboard sequence blocks reading, a sequence change during the read rejects the captured text, and success follows the expected validation/copy/read order. Paste tests verify that stale targets prevent clipboard writes and that focus/identity failures block paste.
-- Hosted Windows GitHub Actions verification will run after these changes are pushed.
+- Hosted Windows GitHub Actions run `37658850345` passed for pushed commit `967a12c`; all three workflow steps (application build, deterministic tests, benchmark build) succeeded.
 - No actual Notion page or real system clipboard was modified. Notion selection continuity and rich-paste normalization remain unverified.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.

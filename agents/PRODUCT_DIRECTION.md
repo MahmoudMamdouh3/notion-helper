@@ -1,0 +1,73 @@
+# Product direction and working notes
+
+## Vision
+
+Make the user's existing Notion workspace a more effective place to write by adding a fast, local, human-controlled writing assistant. The intended end state is more than spell-check: it can clarify rough prose, suggest structure, and help author attractive, useful Notion content such as quotes, code blocks, callouts, tables, databases, and eventually charts. Build toward that vision in deliberate, testable steps.
+
+## User and problem
+
+The initial user writes quickly in Notion and makes spelling, grammar, and organization mistakes. They may know what they want to say but not how to turn it into a polished Notion page. They prefer zero recurring cost and local processing, and have a Windows 11 laptop with an RTX 4060 Laptop GPU, i7-13700H, and 16 GB RAM.
+
+## Product promise
+
+- Invoke the helper while working in the Notion desktop app.
+- Keep text on the user's computer for inference.
+- Correct spelling and grammar quickly.
+- Offer structural formatting only if content benefits.
+- Let the user inspect and control every replacement.
+- Explain setup, model requirements, privacy, and limitations plainly.
+
+## Interaction principles
+
+1. **Shortcut first, widget second.** A click can steal focus from a text selection; a global shortcut is the reliable primary interaction. The tray/floating window remains available for inspection and fallback.
+2. **Proofread conservatively.** Preserve facts, intent, language, tone, and paragraph boundaries.
+3. **Format semantically.** Use headings for section boundaries, lists for actual items/steps, quotes for quoted words, code for actual code/commands, tables for aligned data, and color for a meaningful callout. Use no decoration when structure is already clear.
+4. **Preview before paste.** Never change the active selection automatically. Closing is cancellation.
+5. **Never silently switch privacy modes.** Missing local dependencies must produce actionable errors rather than sending content to a hosted service.
+6. **Make capability boundaries clear.** Clipboard paste is not a Notion API; charts/databases require a separate, permissioned design.
+
+## Current implementation baseline
+
+- Platform: Windows desktop application using .NET 10 WPF, WinForms `NotifyIcon`, and Win32 hotkey/input/foreground-window APIs.
+- Entry: `Ctrl+Shift+Space` with a selection, plus notification-area menu.
+- Model runtime: Ollama HTTP API at `http://127.0.0.1:11434`.
+- Default candidate: `qwen2.5:3b`; benchmark before increasing model size.
+- Modes: proofreading-only and optional structure-aware formatting.
+- Output: validated JSON semantic blocks, textual review, HTML clipboard flavor plus Unicode plain-text fallback.
+- Target: the foreground window from capture time; no Notion-specific identity check yet.
+- State: no user-text history database and no hosted services.
+
+## Open product questions (do not make irreversible choices silently)
+
+- Should the default mode remain proofreading-only, or should the app remember the last selected mode?
+- How much of the previous clipboard can/should be restored, and how should lossy formats be disclosed?
+- What visual preview/diff best communicates color, quote, code, and table changes?
+- Should the helper refuse operation outside Notion, or remain a general selected-text editor?
+- Which model gives the best speed/quality trade-off on real user-approved examples?
+- Which Notion API workflows are actually needed, and what minimum integration/page permissions would they require?
+- Is Windows the intended long-term platform, or should the UI eventually move to a cross-platform shell?
+
+## Near-term priorities
+
+1. Build cleanly and validate startup/exit/tray/hotkey behavior on Windows.
+2. Install Ollama, download the small default model, and exercise both model prompts locally.
+3. Verify clipboard selection, restoration focus, and paste in the real Notion desktop client.
+4. Test CF_HTML offsets and HTML escaping with automated tests, including non-ASCII content.
+5. Add an accurate diff/format preview and explicit selection/clipboard failure handling.
+6. Compare a larger local model only after the baseline is measurable.
+7. Consider API-based page/database workflows only after the selected-text MVP is reliable and the user opts in.
+
+## Current known limitations
+
+- No verified end-to-end Notion paste test yet; CSS colors and semantic block conversion may be normalized or discarded.
+- Clipboard capture replaces whatever had been copied; arbitrary previous formats are not preserved.
+- The helper uses simulated copy/paste and can lose focus or target the wrong app.
+- The shortcut is global and not configurable; the app can currently operate on any foreground application.
+- The preview is plain text, not WYSIWYG or a character-level diff.
+- The model, Ollama endpoint, and timeout are constants; the app does not install Ollama or download weights automatically.
+- Model output may be valid but incorrect; schema validation cannot verify semantic correctness.
+- No Notion API, database builder, chart rendering, browser extension, undo/history, or non-Windows build.
+
+## Maintenance rule
+
+After each meaningful implementation batch, update the software design document with actual behavior, the rationale for changed decisions, verification performed, and any newly discovered limitation. This is a maintained design record, not a one-time proposal.

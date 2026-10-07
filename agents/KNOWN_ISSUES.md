@@ -4,6 +4,7 @@ This concise living ledger complements the detailed limitations in [`../docs/SOF
 
 | ID | Status | Area | Issue and evidence | Next action |
 |---|---|---|---|---|
+| DEV-01 | RESOLVED | Windows source tracking | An unanchored root `models/` ignore rule excluded the C# `Models/` source folder on Windows. The first GitHub Actions build caught the missing files; root-anchored ignore rules and a passing hosted build fixed it in commit `4fb740e`. | Keep root artifact ignore patterns anchored and verify new files appear in `git status`. |
 | UI-01 | OPEN | Notion integration | Clipboard formats and foreground-window flow have not been verified against a real Notion page. | Keep integration claims explicitly unverified; consider a non-destructive isolated-editor harness before real-page automation. |
 | CORE-01 | OPEN | Selection safety | The app captures from the foreground app and relies on a remembered native window handle; the target can change before Apply. | Consider verifying process/window identity and selection continuity without private Notion APIs. |
 | CORE-02 | OPEN | Clipboard | Capturing selection replaces previous clipboard data, and Apply replaces it with formatted output. Arbitrary clipboard formats are not preserved. | Design a preservation policy and automate supported-format coverage before implementing restoration. |

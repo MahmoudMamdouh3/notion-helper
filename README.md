@@ -76,7 +76,7 @@ dotnet build .\src\NotionHelper\NotionHelper.csproj -c Release
 dotnet run --project .\src\NotionHelper\NotionHelper.csproj
 ```
 
-The helper opens in the notification area. Right-click its icon to show or exit. In Notion, select text and press the configured shortcut (default **Ctrl+Shift+Space**). The helper captures the selection, opens its preview window, and waits for you to choose a mode and click **Improve text**.
+The helper opens in the notification area. Right-click its icon to show or exit. Launching it again activates the already-running helper instead of creating another tray icon or hotkey registration. In Notion, select text and press the configured shortcut (default **Ctrl+Shift+Space**). The helper captures the selection, opens its preview window, and waits for you to choose a mode and click **Improve text**.
 
 If the shortcut is already registered by another application, open the helper from the notification area. Expand **Local settings** to choose an installed Ollama model or shortcut preset, then select **Save**. A shortcut conflict is reported and the prior registered shortcut is retained where possible. Settings are stored in `%LOCALAPPDATA%\NotionHelper\settings.json`; the file contains the model name and shortcut only, never selected writing. The Ollama endpoint is not configurable and remains loopback-only.
 

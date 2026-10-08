@@ -69,6 +69,7 @@ These criteria have not all been verified by a compilation alone. In particular,
 ### 3.1 Primary flow
 
 1. The application starts in the Windows notification area.
+   - If another instance is already running in the same Windows session, a repeated launch signals that process to show and activate its existing window, then exits without creating another tray icon or registering another global shortcut.
 2. The user selects text in Notion and presses `Ctrl+Shift+Space`.
 3. The app records the foreground window and owning process, briefly hides itself, verifies that target is still foreground before sending `Ctrl+C`, then verifies the target again before reading Unicode text. A clipboard sequence check rejects changes that occur while the copied text is being read.
 4. The helper appears with the captured source and the mode selector.
@@ -82,6 +83,7 @@ These criteria have not all been verified by a compilation alone. In particular,
 ### 3.2 Alternate flow and failure behavior
 
 - If no text is selected/copied, the helper explains that the user must select text and try again.
+- If the app is launched while already running, a per-session named mutex selects one primary process and a local auto-reset event requests activation of its window. If startup coordination cannot be established or the primary does not become ready within two seconds, the new process reports a startup error rather than silently starting a duplicate instance.
 - A new capture request while local inference is in progress is rejected, preserving the source/result pair currently being generated.
 - If focus or target identity changes during capture, capture is cancelled before reading clipboard content. If the clipboard changes during the read, nothing is sent to the model and the user is asked to try again.
 - If the shortcut is unavailable, the helper remains accessible using the notification-area icon.
@@ -169,6 +171,7 @@ Implications:
 src/NotionHelper/
   App.xaml(.cs)                         Application lifetime
   MainWindow.xaml(.cs)                  Window, tray menu, hotkey, workflow
+  Services/AppInstanceCoordinator.cs    Per-session single-instance and activation handoff
   Models/ImprovementResult.cs           Validated block contract/plain fallback
   Models/AppSettings.cs                 Local settings model and shortcut presets
   Models/WindowTargetSnapshot.cs        Transient captured HWND/process identity
@@ -194,7 +197,8 @@ agents/                                 Product direction and contributor guidan
 
 ### 6.3 Responsibilities
 
-- **Application lifetime:** starts the window hidden, sets explicit shutdown, and leaves an exit path in the tray menu.
+- **Application lifetime:** starts one primary window hidden, sets explicit shutdown, leaves an exit path in the tray menu, and uses a per-session named mutex plus local activation event to route repeated launches to the primary instance.
+- **AppInstanceCoordinator:** owns the named instance mutex on the application UI thread, relays a no-payload activation signal from later launches, and stops/disposes its listener and handles before releasing instance ownership.
 - **MainWindow:** registers the configured global shortcut, captures a window/process identity, performs the UI state transitions, and gates clipboard/paste operations on a valid response and a still-matching target.
 - **WindowTargetSnapshot:** stores only the target HWND, owning process ID, and process name for the current capture session; this identity is transient and is not persisted.
 - **PasteCoordinator:** enforces target check → clipboard write → focus return → wait → foreground/identity recheck → simulated paste. A failed check blocks later destructive actions; focus failures leave output available on the clipboard only if it had already been written.
@@ -507,6 +511,7 @@ Validation sequence:
 | 2026-10-07 | Render preview from semantic WPF elements and guard paste with a testable coordinator | Makes formatting choices visible, avoids model-authored markup, and blocks stale/focus-changed target handoffs |
 | 2026-10-07 | Recheck target focus around simulated copy and verify clipboard stability during selection read | Prevents sending text after an observed focus/identity change and rejects reads that race a clipboard update; OS input and clipboard operations cannot be made atomic |
 | 2026-10-07 | Add a side-by-side bounded text comparison alongside the semantic preview | Makes wording changes easier to inspect without hiding semantic formatting; caps LCS work and explicitly discloses coarse comparison for large inputs |
+| 2026-10-08 | Enforce one primary app instance and route repeat launches to it | Prevents duplicate tray icons and competing global-hotkey registrations while preserving launch-to-open behavior using per-session local synchronization without transmitting user content |
 
 Add entries when decisions change; do not erase superseded decisions without preserving their history and rationale.
 
@@ -538,5 +543,13 @@ Add entries when decisions change; do not erase superseded decisions without pre
 - The Release app remained running for four seconds during startup smoke testing and was then stopped by its exact process ID. No clipboard or Notion interaction was performed.
 - Hosted Windows GitHub Actions run `37667012144` passed for commit `775e5b6`; application build, deterministic tests, and benchmark build all succeeded.
 - The text comparison uses synthetic examples only. Real Notion rendering, selection continuity, and formatting-only comparison remain unverified.
+
+**Startup lifecycle verification (2026-10-08)**
+
+- `dotnet build .\src\NotionHelper\NotionHelper.csproj -c Release`: passed with zero warnings and zero errors.
+- `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release`: passed, 53/53 tests, including three single-instance ownership and activation-relay tests using unique per-test names and a separate thread to model another instance.
+- `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
+- Repeated-launch smoke test: the primary app process remained alive and the second process exited after signaling it. The processes were stopped by their exact IDs; the test did not interact with Notion or the clipboard.
+- The smoke test confirms process handoff, while actual visible foreground activation, tray exit, and global-hotkey conflict behavior remain unverified interactively.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.

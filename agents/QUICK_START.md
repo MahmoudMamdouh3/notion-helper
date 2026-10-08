@@ -26,6 +26,7 @@ WPF/tray + hotkey -> clipboard capture -> OllamaClient -> validated block model
 | Architecture and decisions | [`../docs/SOFTWARE_DESIGN.md`](../docs/SOFTWARE_DESIGN.md) |
 | Current gaps and risks | [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) |
 | Window, tray, hotkey, capture/apply flow | [`../src/NotionHelper/MainWindow.xaml.cs`](../src/NotionHelper/MainWindow.xaml.cs) |
+| Single-instance startup and activation | [`../src/NotionHelper/App.xaml.cs`](../src/NotionHelper/App.xaml.cs), [`../src/NotionHelper/Services/AppInstanceCoordinator.cs`](../src/NotionHelper/Services/AppInstanceCoordinator.cs) |
 | WPF layout and controls | [`../src/NotionHelper/MainWindow.xaml`](../src/NotionHelper/MainWindow.xaml) |
 | Safe semantic preview | [`../src/NotionHelper/Presentation/PreviewDocumentBuilder.cs`](../src/NotionHelper/Presentation/PreviewDocumentBuilder.cs) |
 | Source/result text comparison | [`../src/NotionHelper/Presentation/TextDiffBuilder.cs`](../src/NotionHelper/Presentation/TextDiffBuilder.cs) |

@@ -29,7 +29,7 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 ## Current implementation baseline
 
 - Platform: Windows desktop application using .NET 10 WPF, WinForms `NotifyIcon`, and Win32 hotkey/input/foreground-window APIs.
-- Entry: `Ctrl+Shift+Space` with a selection, plus notification-area menu.
+- Entry: one tray instance; a repeated app launch signals the primary process to show its window. `Ctrl+Shift+Space` with a selection and notification-area menu remain the normal entry points.
 - Model runtime: Ollama HTTP API at `http://127.0.0.1:11434`.
 - Default model: `qwen2.5:7b` Q4_K_M, promoted after a 3/3 synthetic benchmark result versus 1/3 for `qwen2.5:3b`; the 3B model remains available as a lower-VRAM fallback. Model name and shortcut preset are stored in local settings.
 - Modes: proofreading-only and optional structure-aware formatting.
@@ -50,7 +50,7 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 
 ## Near-term priorities
 
-1. Build cleanly and validate startup/exit/tray/hotkey behavior on Windows.
+1. Complete manual validation of tray exit, shortcut registration/conflict, and repeated-launch activation on Windows.
 2. Broaden local model-quality evaluation beyond the three fixed synthetic benchmark cases; keep candidate/default changes evidence-based.
 3. Verify clipboard selection, restoration focus, and paste in the real Notion desktop client.
 4. Test CF_HTML offsets and HTML escaping with automated tests, including non-ASCII content.

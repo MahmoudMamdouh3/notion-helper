@@ -429,6 +429,8 @@ public partial class MainWindow : Window
         Focus();
     }
 
+    internal void ActivateFromExternalLaunch() => ShowAndActivate();
+
     protected override void OnClosing(CancelEventArgs e)
     {
         if (!_allowClose)

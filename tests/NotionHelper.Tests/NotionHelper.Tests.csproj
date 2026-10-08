@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NotionHelper\NotionHelper.csproj" />
+    <ProjectReference Include="..\..\tools\ModelBenchmark\ModelBenchmark.csproj" />
   </ItemGroup>
 
   <ItemGroup>

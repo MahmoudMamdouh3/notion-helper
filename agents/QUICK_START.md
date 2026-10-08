@@ -49,7 +49,7 @@ The deterministic tests use a fake HTTP handler and do not require Ollama or Not
 dotnet run --project .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release -- qwen2.5:7b qwen2.5:3b
 ```
 
-The benchmark does not download models or save prompt/output text. A `CHECK` is a quality observation, not a deterministic test-suite failure. See the README and design document for model setup and interpretation.
+The benchmark runs eight fixed synthetic cases and does not download models or save prompt/output text. It reports proofreading and structure category totals. A `CHECK` is a quality observation, not a deterministic test-suite failure; the offline tests cover the catalog/evaluators, not model quality. See the README and design document for model setup and interpretation.
 
 ## Change discipline
 

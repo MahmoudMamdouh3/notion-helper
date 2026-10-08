@@ -186,7 +186,7 @@ src/NotionHelper/
   Interop/KeyboardInput.cs              Copy/paste keyboard chord
   Properties/AssemblyInfo.cs            Test-only internals visibility
 tests/NotionHelper.Tests/                Clipboard, settings, and local-protocol tests
-tools/ModelBenchmark/                    Optional synthetic local-model benchmark CLI
+tools/ModelBenchmark/                    Eight-case synthetic local-model benchmark CLI/catalog
 src/NotionHelper/Presentation/           Safe WPF semantic preview builder
 agents/QUICK_START.md                    Compact agent/contributor onboarding map
 agents/KNOWN_ISSUES.md                   Evidence-based current issue ledger
@@ -204,7 +204,7 @@ agents/                                 Product direction and contributor guidan
 - **PasteCoordinator:** enforces target check → clipboard write → focus return → wait → foreground/identity recheck → simulated paste. A failed check blocks later destructive actions; focus failures leave output available on the clipboard only if it had already been written.
 - **OllamaClient:** posts a non-streaming JSON-mode chat request to the fixed local endpoint using the configured model; gives proofread and structure-aware requests different constraints; parses JSON and rejects unsupported or malformed structures.
 - **AppSettingsStore:** loads and validates only the model name and a supported shortcut preset in `%LOCALAPPDATA%\NotionHelper\settings.json`; it never stores source text, prompts, or model output.
-- **ModelBenchmark:** runs fixed synthetic cases through the same `OllamaClient`, reports per-case quality checks and elapsed time, and does not persist generated content or change the application default.
+- **ModelBenchmark:** runs eight synthetic cases through the same `OllamaClient`, reports per-case/category quality checks and elapsed time, and does not persist generated content or change the application default.
 - **ImprovementResult/ContentBlock:** represents only the semantic subset the app knows how to preview and paste; supports plain text fallback.
 - **HtmlClipboardFormatter:** HTML-encodes all model/user text, renders allow-listed semantic blocks and color values, and constructs Windows CF_HTML byte offsets.
 - **PreviewDocumentBuilder:** creates a read-only visual approximation from the validated semantic block model using WPF document elements; it never parses HTML, XAML, or other model-authored markup.
@@ -307,9 +307,11 @@ The output is intentionally simple HTML and standard tags, not an undocumented N
 
 **Decision:** use `qwen2.5:7b` (Q4_K_M) as the new default and retain `qwen2.5:3b` as an explicitly selectable fallback.
 
-**Evidence:** on this Windows machine with Ollama 0.35.1, the fixed three-case synthetic benchmark scored 3/3 for 7B and 1/3 for 3B using the same client, prompts, JSON validation, and temperature 0.2. This includes spelling correction, useful structure for labeled notes, and avoiding unnecessary formatting of normal prose.
+**Historical evidence:** on this Windows machine with Ollama 0.35.1, the earlier three-case synthetic benchmark scored 3/3 for 7B and 1/3 for 3B using the same client, prompts, JSON validation, and temperature 0.2. This covered spelling correction, useful structure for labeled notes, and avoiding unnecessary formatting of normal prose. The rubric was later expanded to eight; these results must not be represented as scores on the expanded benchmark.
 
-**Trade-off:** 7B is approximately 4.75 GB on disk and allocated about 4.75 GB of VRAM. With it loaded, `nvidia-smi` reported 7.29 GB of 8.19 GB used (about 0.65 GB free) on the observed system; with 3B loaded, it reported 4.74 GB used (about 3.2 GB free). The 7B model better fits the writing-quality objective, but users running GPU-heavy applications may need to select 3B or unload the model. A three-case synthetic result is not a general quality guarantee.
+**Expanded-rubric evidence (single run, 2026-10-08):** the eight-case benchmark scored 4/8 for 7B (proofread 2/2, structure 2/6; mean 2.6 s) and 2/8 for 3B (proofread 1/2, structure 1/6; mean 1.1 s). Both missed multiple semantic-format cases. This exposes a gap to investigate, not a basis for automatic model selection or a default change; repeat measurements and evaluate representative user-approved examples.
+
+**Trade-off:** 7B is approximately 4.75 GB on disk and allocated about 4.75 GB of VRAM. With it loaded, `nvidia-smi` reported 7.29 GB of 8.19 GB used (about 0.65 GB free) on the observed system; with 3B loaded, it reported 4.74 GB used (about 3.2 GB free). The 7B model better fit the initial limited synthetic evidence, but users running GPU-heavy applications may need to select 3B or unload the model. Neither the historical three-case nor single expanded-rubric score is a general quality guarantee.
 
 ### ADR-9: Semantic WPF preview and guarded paste handoff (accepted)
 
@@ -364,7 +366,7 @@ Error paths must not log selection text by default.
 ## 11. Resource and performance expectations
 
 - Text is submitted only after Improve text is clicked.
-- The default 7B model performed better on a three-case synthetic benchmark, but this is not a general quality guarantee. Its VRAM use may compete with GPU-heavy applications; the 3B alternative uses less memory but performed worse in that benchmark.
+- The default 7B model performed better on the historical three-case synthetic benchmark, but has not been rerun against the expanded eight-case rubric. This is not a general quality guarantee. Its VRAM use may compete with GPU-heavy applications; the 3B alternative uses less memory but performed worse in the earlier benchmark.
 - GPU use depends on Ollama's model placement and free memory; CPU inference remains possible but slower.
 - Long selections can increase context use and latency. The current application does not impose an explicit character limit before sending; add one with a clear user-facing explanation if tests show reliability or memory problems.
 - Model downloads are separate from runtime and can be multiple gigabytes; the application does not automatically download weights or trigger unexpected network transfers.
@@ -395,17 +397,17 @@ The model name defaults to `qwen2.5:7b` and can be changed in the collapsed **Lo
 
 ### Automated tests
 
-The xUnit suite covers HTML encoding, grouping consecutive numbered-list items, UTF-8 CF_HTML offsets with non-ASCII content, tab-separated table fallback, proofread-mode formatting restrictions, rectangular table validation, local settings round-trip and validation, supported shortcut mappings, Ollama request/response behavior through an in-memory fake HTTP handler, WPF semantic preview rendering on an STA thread, captured window/process identity matching, and paste sequencing/failure paths through a fake environment. These tests do not require Ollama, a network connection, Notion, a real system clipboard, or real user writing.
+The xUnit suite covers HTML encoding, grouping consecutive numbered-list items, UTF-8 CF_HTML offsets with non-ASCII content, tab-separated table fallback, proofread-mode formatting restrictions, rectangular table validation, local settings round-trip and validation, supported shortcut mappings, Ollama request/response behavior through an in-memory fake HTTP handler, WPF semantic preview rendering on an STA thread, captured window/process identity matching, paste sequencing/failure paths through a fake environment, application single-instance ownership/activation, and the synthetic benchmark catalog/evaluators. These tests do not require Ollama, a network connection, Notion, a real system clipboard, or real user writing.
 
 The Windows GitHub Actions workflow builds the WPF app, runs the deterministic test suite, and builds the benchmark CLI on pushes and pull requests. It deliberately does not download model weights or run nondeterministic inference.
 
-Run the optional benchmark with `dotnet run --project .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release -- <model> [<model> ...]`. It uses three hard-coded synthetic cases and the exact app client/prompt/validator path. It reports response time and pass/check status only, never prints or persists model outputs, and must not be used to automatically select a default. Measurements are machine/runtime dependent; quality checks are deliberately small indicators, not proof of semantic correctness.
+Run the optional benchmark with `dotnet run --project .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release -- <model> [<model> ...]`. It uses eight stable synthetic cases (two proofreading and six structure-mode scenarios) and the exact app client/prompt/validator path. It reports per-case issues, category totals, and response time, never prints or persists model outputs, and must not be used to automatically select a default. Tests validate that the catalog and evaluators reflect the intended synthetic contracts; they do not run inference. Measurements are machine/runtime dependent, and these limited checks are not proof of semantic correctness.
 
 Remaining high-value automated tests:
 
 1. **UI state transitions:** capture, empty selection, valid result, invalid response, Apply disabled before a response, close without replacement, and explicit Apply only.
 2. **Native workflow:** automated tests verify coordinator policy, target identity, and pure payload serialization, but do not invoke real global shortcuts or alter the system clipboard. Use an isolated local editor fixture if it can run without stealing a user's clipboard or altering a page.
-3. **Model quality:** extend synthetic benchmark cases only when they represent a stable measurable requirement; keep real user text out of tests and CI.
+3. **Model quality:** rerun the expanded eight-case benchmark for each installed candidate before changing the default; extend cases only when they represent a stable measurable requirement, and keep real user text out of tests and CI.
 
 ### Manual end-to-end matrix
 
@@ -447,7 +449,7 @@ Compilation alone does not verify these integration behaviors. Test against the 
 - Add model and keyboard-shortcut settings with safe validation. (Implemented: model name and three supported shortcut presets are saved locally.)
 - Add automatic tests for response validation and CF_HTML offsets. (Implemented: focused serializer, settings, prompt, and loopback protocol tests.)
 - Add Windows CI for build, deterministic tests, and benchmark-tool compilation. (Implemented; live inference is intentionally not part of CI.)
-- Add a repeatable synthetic model benchmark using the same production prompts and validated response contract. (Implemented; candidate comparison remains to be run and recorded.)
+- Add a repeatable synthetic model benchmark using the same production prompts and validated response contract. (Implemented and expanded to eight scenarios; run the expanded rubric on the installed candidate models before using it for comparisons.)
 - Package an installer and evaluate signing/update options.
 - Verify target focus, selection, clipboard, and paste behavior safely; HWND/process identity guards and automated semantic preview tests are implemented, but selection continuity and actual Notion rich paste remain unverified.
 
@@ -512,6 +514,7 @@ Validation sequence:
 | 2026-10-07 | Recheck target focus around simulated copy and verify clipboard stability during selection read | Prevents sending text after an observed focus/identity change and rejects reads that race a clipboard update; OS input and clipboard operations cannot be made atomic |
 | 2026-10-07 | Add a side-by-side bounded text comparison alongside the semantic preview | Makes wording changes easier to inspect without hiding semantic formatting; caps LCS work and explicitly discloses coarse comparison for large inputs |
 | 2026-10-08 | Enforce one primary app instance and route repeat launches to it | Prevents duplicate tray icons and competing global-hotkey registrations while preserving launch-to-open behavior using per-session local synchronization without transmitting user content |
+| 2026-10-08 | Expand the synthetic model benchmark from three to eight scenarios | Broaden stable checks across factual anchors and semantic structures; preserve the rule that model selection remains a measured human decision and rerun required |
 
 Add entries when decisions change; do not erase superseded decisions without preserving their history and rationale.
 
@@ -552,5 +555,11 @@ Add entries when decisions change; do not erase superseded decisions without pre
 - Repeated-launch smoke test: the primary app process remained alive and the second process exited after signaling it. The processes were stopped by their exact IDs; the test did not interact with Notion or the clipboard.
 - Hosted Windows GitHub Actions run `37745893747` passed for commit `bf0f623`; application build, deterministic tests, and benchmark build all succeeded.
 - The smoke test confirms process handoff, while actual visible foreground activation, tray exit, and global-hotkey conflict behavior remain unverified interactively.
+
+**Expanded synthetic benchmark verification (2026-10-08)**
+
+- `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release`: passed, 56/56 tests, including three catalog/evaluator checks for case coverage, passing expected synthetic contracts, and reporting missing anchors or unwanted proofreading formatting. These tests do not run a model.
+- `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
+- The optional benchmark now contains eight cases (two proofreading, six structure) and reports category totals. One run against installed Ollama 0.35.1 models scored 7B 4/8 (proofreading 2/2, structure 2/6; mean 2.6 s) and 3B 2/8 (proofreading 1/2, structure 1/6; mean 1.1 s). Both missed list/table/quote/code checks; the prior three-case scores are historical and not comparable. Multiple repetitions and representative quality evaluation are still needed before using these measurements to reconsider the default.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.

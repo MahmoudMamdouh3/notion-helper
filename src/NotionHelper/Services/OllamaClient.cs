@@ -108,6 +108,18 @@ public sealed class OllamaClient : IDisposable
               clarifies a meaningful callout; otherwise use default. For a title followed by multiple short
               label-value lines, use the title as a heading and each labeled fact as a bullet when that improves
               scanning. Preserve each label and value. Do not force other prose into this pattern or decorate it.
+
+              When the source has a clear matching structure, preserve it as semantic blocks instead of flattening it:
+              - A checklist or sequence of three or more actions must be separate numbered or bullet blocks, one action per block.
+              - A header plus three or more records with the same fields must be one rectangular table: header as row one and
+                every source record as a data row. Preserve all labels and values.
+              - A complete, explicitly attributed quotation must be a quote block. Keep the quoted words unchanged.
+              - A group of literal shell commands or source code must be a code block. Preserve every command and token exactly;
+                keep explanatory prose in a separate paragraph.
+              For example, represent literal commands as {"blocks":[{"type":"code","text":"dotnet test ...","color":"default","bold":false}]}
+              and repeated records as {"type":"table","text":"Data","color":"default","bold":false,"rows":[["Field","Value"],["A","1"]]}.
+              These structures are semantic, not decoration. Do not create them for ordinary prose, isolated phrases,
+              inconsistent data, or content that merely mentions code or actions. For other inputs, use plain paragraphs.
               """
             ;
 

@@ -132,8 +132,8 @@ The initial development machine is a Lenovo Windows 11 laptop with a 13th-genera
 
 Implications:
 
-- Quantized `qwen2.5:7b` was measured at about 4.75 GB VRAM allocation; while it was loaded in this environment, the GPU showed about 0.65 GB free. It performed better on the small synthetic rubric than `qwen2.5:3b`, but may compete with GPU-heavy applications.
-- `qwen2.5:3b` was measured at about 2.16 GB VRAM allocation and left about 3.2 GB free on the same machine. It is available in settings as a lower-memory fallback, but scored worse on the synthetic proofreading/structure checks.
+- Quantized `qwen2.5:7b` was measured at about 4.75 GB VRAM allocation; while it was loaded in this environment, the GPU showed about 0.65 GB free. It may compete with GPU-heavy applications. Its latest single synthetic run did not pass all structure checks.
+- `qwen2.5:3b` was measured at about 2.16 GB VRAM allocation and left about 3.2 GB free on the same machine. It is available in settings as a lower-memory fallback. A request from its latest benchmark run failed during Ollama CUDA initialization; the runtime reliability and relative quality need further measurement.
 - Model quantization, context length, GPU offload, concurrency, laptop cooling/power mode, free VRAM, and prompt size affect actual speed and quality.
 - No WSL/Docker dependency is justified for a native WPF app.
 - These facts describe one developer machine, not a universal system requirement.
@@ -309,7 +309,7 @@ The output is intentionally simple HTML and standard tags, not an undocumented N
 
 **Historical evidence:** on this Windows machine with Ollama 0.35.1, the earlier three-case synthetic benchmark scored 3/3 for 7B and 1/3 for 3B using the same client, prompts, JSON validation, and temperature 0.2. This covered spelling correction, useful structure for labeled notes, and avoiding unnecessary formatting of normal prose. The rubric was later expanded to eight; these results must not be represented as scores on the expanded benchmark.
 
-**Expanded-rubric evidence (single run, 2026-10-08):** the eight-case benchmark scored 4/8 for 7B (proofread 2/2, structure 2/6; mean 2.6 s) and 2/8 for 3B (proofread 1/2, structure 1/6; mean 1.1 s). Both missed multiple semantic-format cases. This exposes a gap to investigate, not a basis for automatic model selection or a default change; repeat measurements and evaluate representative user-approved examples.
+**Initial expanded-rubric evidence (historical single run, 2026-10-08):** the initial eight-case benchmark scored 4/8 for 7B (proofread 2/2, structure 2/6; mean 2.6 s) and 2/8 for 3B (proofread 1/2, structure 1/6; mean 1.1 s). Both missed multiple semantic-format cases. The prompt and some benchmark inputs were subsequently revised, so these scores are not directly comparable to the later run recorded in the verification ledger.
 
 **Trade-off:** 7B is approximately 4.75 GB on disk and allocated about 4.75 GB of VRAM. With it loaded, `nvidia-smi` reported 7.29 GB of 8.19 GB used (about 0.65 GB free) on the observed system; with 3B loaded, it reported 4.74 GB used (about 3.2 GB free). The 7B model better fit the initial limited synthetic evidence, but users running GPU-heavy applications may need to select 3B or unload the model. Neither the historical three-case nor single expanded-rubric score is a general quality guarantee.
 
@@ -558,9 +558,10 @@ Add entries when decisions change; do not erase superseded decisions without pre
 
 **Expanded synthetic benchmark verification (2026-10-08)**
 
-- `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release`: passed, 56/56 tests, including three catalog/evaluator checks for case coverage, passing expected synthetic contracts, and reporting missing anchors or unwanted proofreading formatting. These tests do not run a model.
-- `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
-- The optional benchmark now contains eight cases (two proofreading, six structure) and reports category totals. One run against installed Ollama 0.35.1 models scored 7B 4/8 (proofreading 2/2, structure 2/6; mean 2.6 s) and 3B 2/8 (proofreading 1/2, structure 1/6; mean 1.1 s). Both missed list/table/quote/code checks; the prior three-case scores are historical and not comparable. Multiple repetitions and representative quality evaluation are still needed before using these measurements to reconsider the default.
+- `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release`: passed, 56/56 tests, including prompt contract checks and benchmark catalog/evaluator tests. These tests do not run a model.
+- `dotnet build .\src\NotionHelper\NotionHelper.csproj -c Release` and `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
+- The optional benchmark now contains eight cases (two proofreading, six structure) and reports category totals. After tightening the structure prompt with explicit distinctions, preservation requirements, and JSON examples, and clarifying several case inputs, one run against Ollama 0.35.1 scored 7B 5/8 (proofreading 2/2, structure 3/6; mean 4.1 s) and 3B 4/8 (proofreading 1/2, structure 3/6; mean 4.5 s for completed requests). The 7B model missed the labeled-update, table, and quotation checks; the 3B model missed the labeled-update, quotation, and shell-command checks. One 3B request failed because Ollama's llama-server terminated during CUDA shared-object initialization (`0xc0000409`). The benchmark exits unsuccessfully on this request error, as intended. The prompt and several inputs differ from the previous run, so the scores are not a controlled before/after comparison. The default remains unchanged: these small synthetic measurements do not establish general quality, and the lower-memory model's runtime failure needs investigation.
+- Multiple repetitions and representative quality evaluation remain necessary before using these measurements to reconsider the default. The previous 4/8 and 2/8 run, as well as the earlier three-case results, are historical and not directly comparable.
 - Hosted Windows GitHub Actions run `37747116297` passed the application build, 56-test suite, and benchmark build for commit `47ca36b`.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.

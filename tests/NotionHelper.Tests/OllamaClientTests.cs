@@ -112,6 +112,16 @@ public sealed class OllamaClientTests
         Assert.Contains("each labeled fact as a bullet", prompt, StringComparison.Ordinal);
         Assert.Contains("code blocks only for actual code or commands", prompt, StringComparison.Ordinal);
         Assert.Contains("for data with consistent columns", prompt, StringComparison.Ordinal);
+        Assert.Contains("sequence of three or more actions must be separate numbered or bullet blocks", prompt, StringComparison.Ordinal);
+        Assert.Contains("records with the same fields must be one rectangular table", prompt, StringComparison.Ordinal);
+        Assert.Contains("complete, explicitly attributed quotation must be a quote block", prompt, StringComparison.Ordinal);
+        Assert.Contains("group of literal shell commands or source code must be a code block", prompt, StringComparison.Ordinal);
+        Assert.Contains("must be separate numbered or bullet blocks, one action per block", prompt, StringComparison.Ordinal);
+        Assert.Contains("one rectangular table", prompt, StringComparison.Ordinal);
+        Assert.Contains("Keep the quoted words unchanged", prompt, StringComparison.Ordinal);
+        Assert.Contains("Preserve every command and token exactly", prompt, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"code\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not create them for ordinary prose", prompt, StringComparison.Ordinal);
     }
 
     private static string SuccessResponse(string content) =>

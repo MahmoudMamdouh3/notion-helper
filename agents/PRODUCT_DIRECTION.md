@@ -31,7 +31,7 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 - Platform: Windows desktop application using .NET 10 WPF, WinForms `NotifyIcon`, and Win32 hotkey/input/foreground-window APIs.
 - Entry: one tray instance; a repeated app launch signals the primary process to show its window. `Ctrl+Shift+Space` with a selection and notification-area menu remain the normal entry points.
 - Model runtime: Ollama HTTP API at `http://127.0.0.1:11434`.
-- Default model: `qwen2.5:7b` Q4_K_M, initially promoted after a 3/3 result versus 1/3 for `qwen2.5:3b` on the earlier three-case synthetic benchmark; the 3B model remains available as a lower-VRAM fallback. One run on the expanded eight-case rubric scored 7B 4/8 and 3B 2/8, with several structured-block expectations missed; repeat and review those cases before reconsidering the default. Model name and shortcut preset are stored in local settings.
+- Default model: `qwen2.5:7b` Q4_K_M, initially promoted after a 3/3 result versus 1/3 for `qwen2.5:3b` on the earlier three-case synthetic benchmark; the 3B model remains available as a lower-VRAM fallback. A single run after tightening the structure prompt and clarifying several benchmark inputs scored 7B 5/8 and 3B 4/8; one 3B request failed during Ollama CUDA initialization. The 7B run still missed labeled-update, table, and quote checks. These results are not directly comparable to earlier runs and do not justify changing the default. Model name and shortcut preset are stored in local settings.
 - Modes: proofreading-only and optional structure-aware formatting.
 - Output: validated JSON semantic blocks, semantic rich-format preview plus side-by-side textual changes, HTML clipboard flavor plus Unicode plain-text fallback.
 - Target: capture records the foreground window handle and process ID; identity/focus are checked around simulated copy, and clipboard sequence is checked around capture read. Apply rechecks identity/focus before simulated paste. It does not verify Notion identity or detect selection/caret changes within the same window, and OS clipboard/input operations cannot be made atomic.
@@ -51,7 +51,7 @@ The initial user writes quickly in Notion and makes spelling, grammar, and organ
 ## Near-term priorities
 
 1. Complete manual validation of tray exit, shortcut registration/conflict, and repeated-launch activation on Windows.
-2. Investigate and rerun the expanded eight-case benchmark on the current model candidates; several genuine list/table/quote/code cases failed in one run. Do not change the default based on one synthetic run.
+2. Repeat the expanded benchmark after the prompt and test changes, diagnose the intermittent 3B Ollama/CUDA request failure, and assess the remaining labeled-update/table/quote misses. Do not change the default based on one synthetic run.
 3. Verify clipboard selection, restoration focus, and paste in the real Notion desktop client.
 4. Test CF_HTML offsets and HTML escaping with automated tests, including non-ASCII content.
 5. Improve disclosure and failure handling for clipboard operations; the semantic preview, text comparison, and stale-window guard are implemented, but selection continuity remains unknown.

@@ -73,7 +73,7 @@ internal static class BenchmarkCases
         new(
             "structure-actionable-steps",
             "structure",
-            "Release checklist: run the test suite, build the installer, then publish the package.",
+            "Release checklist:\n1. Run the test suite.\n2. Build the installer.\n3. Publish the package.",
             ImprovementMode.StructureWhenUseful,
             result =>
             {
@@ -89,7 +89,7 @@ internal static class BenchmarkCases
         new(
             "structure-consistent-data-table",
             "structure",
-            "Support queue: Ana owns 4 open requests; Bo owns 2 open requests; Cy owns 5 open requests.",
+            "Support queue (owner, open requests):\nAna, 4\nBo, 2\nCy, 5",
             ImprovementMode.StructureWhenUseful,
             result =>
             {
@@ -117,7 +117,7 @@ internal static class BenchmarkCases
         new(
             "structure-explicit-quotation",
             "structure",
-            "Mina wrote, \"Ship only after the checks pass.\"",
+            "Mina's decision:\n\"Ship only after the checks pass.\"",
             ImprovementMode.StructureWhenUseful,
             result =>
             {
@@ -137,7 +137,7 @@ internal static class BenchmarkCases
         new(
             "structure-actual-shell-commands",
             "structure",
-            "Run these commands from the repository root: dotnet test .\\tests\\NotionHelper.Tests\\NotionHelper.Tests.csproj -c Release; dotnet build .\\src\\NotionHelper\\NotionHelper.csproj -c Release.",
+            "Run exactly these shell commands from the repository root:\ndotnet test .\\tests\\NotionHelper.Tests\\NotionHelper.Tests.csproj -c Release\ndotnet build .\\src\\NotionHelper\\NotionHelper.csproj -c Release",
             ImprovementMode.StructureWhenUseful,
             result =>
             {

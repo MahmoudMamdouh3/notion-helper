@@ -561,5 +561,6 @@ Add entries when decisions change; do not erase superseded decisions without pre
 - `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release`: passed, 56/56 tests, including three catalog/evaluator checks for case coverage, passing expected synthetic contracts, and reporting missing anchors or unwanted proofreading formatting. These tests do not run a model.
 - `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
 - The optional benchmark now contains eight cases (two proofreading, six structure) and reports category totals. One run against installed Ollama 0.35.1 models scored 7B 4/8 (proofreading 2/2, structure 2/6; mean 2.6 s) and 3B 2/8 (proofreading 1/2, structure 1/6; mean 1.1 s). Both missed list/table/quote/code checks; the prior three-case scores are historical and not comparable. Multiple repetitions and representative quality evaluation are still needed before using these measurements to reconsider the default.
+- Hosted Windows GitHub Actions run `37747116297` passed the application build, 56-test suite, and benchmark build for commit `47ca36b`.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.

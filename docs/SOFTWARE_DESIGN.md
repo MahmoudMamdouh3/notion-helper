@@ -550,6 +550,7 @@ Add entries when decisions change; do not erase superseded decisions without pre
 - `dotnet test .\tests\NotionHelper.Tests\NotionHelper.Tests.csproj -c Release`: passed, 53/53 tests, including three single-instance ownership and activation-relay tests using unique per-test names and a separate thread to model another instance.
 - `dotnet build .\tools\ModelBenchmark\ModelBenchmark.csproj -c Release`: passed with zero warnings and zero errors.
 - Repeated-launch smoke test: the primary app process remained alive and the second process exited after signaling it. The processes were stopped by their exact IDs; the test did not interact with Notion or the clipboard.
+- Hosted Windows GitHub Actions run `37745893747` passed for commit `bf0f623`; application build, deterministic tests, and benchmark build all succeeded.
 - The smoke test confirms process handoff, while actual visible foreground activation, tray exit, and global-hotkey conflict behavior remain unverified interactively.
 
 Update this record after subsequent build, model-runtime, and Notion end-to-end checks; do not turn an unverified behavior into a success claim.
